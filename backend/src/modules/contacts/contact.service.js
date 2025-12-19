@@ -1,0 +1,177 @@
+import crypto from "crypto";
+import * as contactRepo from "./contact.repo.js";
+import * as sessionRepo from "../sessions/session.repo.js";
+import * as opportunityRepo from "../opportunities/opportunity.repo.js";
+import * as dealRepo from "../deals/deal.repo.js";
+import * as feedbackRepo from "../feedback/feedback.repo.js";
+import { sendLeadEmail } from "../emails/email.service.js";
+
+/* ---------------------------------------------------
+   CREATE LEAD (Employee)
+--------------------------------------------------- */
+export const createLead = async (data) => {
+  const contactId = await contactRepo.createContact({
+    ...data,
+    status: "LEAD",
+  });
+
+  // Generate tracking token
+  const token = crypto.randomUUID();
+  await contactRepo.saveTrackingToken(contactId, token);
+
+  // Send personalized email
+  await sendLeadEmail({
+    contactId,
+    name: data.name,
+    email: data.email,
+    token,
+  });
+
+  return contactId;
+};
+
+/* ---------------------------------------------------
+   GET CONTACT
+--------------------------------------------------- */
+export const getContactById = async (id) => {
+  return await contactRepo.getById(id);
+};
+
+/* ---------------------------------------------------
+   SYSTEM: LEAD → MQL (Marketing Automation)
+--------------------------------------------------- */
+export const processLeadActivity = async ({ contactId, token }) => {
+  const contact = await contactRepo.getById(contactId);
+  if (!contact) return;
+
+  // Security check
+  if (contact.tracking_token !== token) return;
+
+  // Increase interest score
+  await contactRepo.incrementInterestScore(contactId);
+
+  // Auto promote
+  if (contact.status === "LEAD") {
+    await contactRepo.updateStatus(contactId, "MQL");
+    await contactRepo.insertStatusHistory(
+      contactId,
+      "LEAD",
+      "MQL",
+      null // system
+    );
+  }
+};
+
+/* ---------------------------------------------------
+   EMPLOYEE: MQL → SQL
+--------------------------------------------------- */
+export const promoteToSQL = async (contactId, empId) => {
+  const contact = await contactRepo.getById(contactId);
+
+  if (!contact || contact.status !== "MQL") {
+    throw new Error("Only MQL can be promoted to SQL");
+  }
+
+  const avgRating = await sessionRepo.getAverageRating(
+    contactId,
+    "MQL"
+  );
+
+  if (avgRating < 7) {
+    throw new Error("MQL not qualified for SQL");
+  }
+
+  await contactRepo.updateStatus(contactId, "SQL");
+  await contactRepo.insertStatusHistory(
+    contactId,
+    "MQL",
+    "SQL",
+    empId
+  );
+};
+
+/* ---------------------------------------------------
+   EMPLOYEE: SQL → OPPORTUNITY
+--------------------------------------------------- */
+export const convertToOpportunity = async (
+  contactId,
+  empId,
+  expectedValue
+) => {
+  const contact = await contactRepo.getById(contactId);
+
+  if (!contact || contact.status !== "SQL") {
+    throw new Error("Only SQL can be converted to Opportunity");
+  }
+
+  await opportunityRepo.createOpportunity({
+    contact_id: contactId,
+    emp_id: empId,
+    expected_value: expectedValue,
+  });
+
+  await contactRepo.updateStatus(contactId, "OPPORTUNITY");
+  await contactRepo.insertStatusHistory(
+    contactId,
+    "SQL",
+    "OPPORTUNITY",
+    empId
+  );
+};
+
+/* ---------------------------------------------------
+   SYSTEM: OPPORTUNITY → CUSTOMER (Deal Closed)
+--------------------------------------------------- */
+export const closeDeal = async (opportunityId, dealValue) => {
+  const opportunity =
+    await opportunityRepo.getById(opportunityId);
+
+  if (!opportunity || opportunity.status !== "OPEN") {
+    throw new Error("Invalid opportunity");
+  }
+
+  await dealRepo.createDeal({
+    opportunity_id: opportunityId,
+    deal_value: dealValue,
+  });
+
+  await opportunityRepo.markWon(opportunityId);
+
+  await contactRepo.updateStatus(
+    opportunity.contact_id,
+    "CUSTOMER"
+  );
+
+  await contactRepo.insertStatusHistory(
+    opportunity.contact_id,
+    "OPPORTUNITY",
+    "CUSTOMER",
+    null // system
+  );
+};
+
+/* ---------------------------------------------------
+   SYSTEM: CUSTOMER → EVANGELIST
+--------------------------------------------------- */
+export const convertToEvangelist = async (contactId) => {
+  const contact = await contactRepo.getById(contactId);
+
+  if (!contact || contact.status !== "CUSTOMER") {
+    throw new Error("Only customers can become evangelists");
+  }
+
+  const avgFeedback =
+    await feedbackRepo.getAverageRating(contactId);
+
+  if (avgFeedback < 8) {
+    throw new Error("Customer not eligible for evangelist");
+  }
+
+  await contactRepo.updateStatus(contactId, "EVANGELIST");
+  await contactRepo.insertStatusHistory(
+    contactId,
+    "CUSTOMER",
+    "EVANGELIST",
+    null // system
+  );
+};

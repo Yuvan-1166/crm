@@ -1,0 +1,151 @@
+import * as contactService from "./contact.service.js";
+
+/**
+ * @desc   Create a new Lead (Employee action)
+ * @route  POST /contacts
+ * @access Employee
+ */
+export const createContact = async (req, res, next) => {
+  try {
+    const contactId = await contactService.createLead(req.body);
+    res.status(201).json({
+      message: "Lead created and email sent successfully",
+      contactId,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc   Get contact by ID
+ * @route  GET /contacts/:id
+ * @access Employee
+ */
+export const getContactById = async (req, res, next) => {
+  try {
+    const contact = await contactService.getContactById(req.params.id);
+    if (!contact) {
+      return res.status(404).json({ message: "Contact not found" });
+    }
+    res.json(contact);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+/**
+ * @desc   Internal endpoint for marketing automation
+ *         Handles LEAD → MQL automatically
+ * @route  POST /contacts/internal/lead-activity
+ * @access Internal (Tracking Server)
+ */
+export const handleLeadActivity = async (req, res, next) => {
+  try {
+    await contactService.processLeadActivity(req.body);
+    res.sendStatus(200);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+/**
+ * @desc   Promote MQL → SQL (Employee action)
+ * @route  PATCH /contacts/:id/promote-sql
+ * @access Employee
+ */
+export const promoteToSQL = async (req, res, next) => {
+  try {
+    await contactService.promoteToSQL(
+      req.params.id,
+      req.user.empId // injected by auth middleware
+    );
+
+    res.json({ message: "Contact promoted to SQL successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+/**
+ * @desc   Promote SQL → Opportunity (Employee action)
+ * @route  PATCH /contacts/:id/opportunity
+ * @access Employee
+ */
+
+export const convertToOpportunity = async (req, res, next) => {
+  try {
+    const { expectedValue } = req.body;
+const app = express();
+
+    if (!expectedValue) {
+      return res.status(400).json({
+        message: "expectedValue is required",
+      });
+    }
+
+    await contactService.convertToOpportunity(
+      req.params.id,
+      req.user.empId,
+      expectedValue
+    );
+
+    res.json({
+      message: "Contact converted to Opportunity successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+/**
+ * @desc   Close Opportunity → Customer
+ * @route  POST /opportunities/:id/close
+ * @access Employee
+ */
+export const closeDeal = async (req, res, next) => {
+  try {
+    const { dealValue } = req.body;
+
+    if (!dealValue) {
+      return res.status(400).json({
+        message: "dealValue is required",
+      });
+    }
+
+    await contactService.closeDeal(
+      req.params.id,   // opportunityId
+      req.user.empId,
+      dealValue
+    );
+
+    res.json({
+      message: "Deal closed and customer created successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+/**
+ * @desc   Convert Customer → Evangelist
+ * @route  POST /contacts/:id/evangelist
+ * @access System (or Admin)
+ */
+export const convertToEvangelist = async (req, res, next) => {
+  try {
+    await contactService.convertToEvangelist(req.params.id);
+
+    res.json({
+      message: "Customer converted to Evangelist successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
