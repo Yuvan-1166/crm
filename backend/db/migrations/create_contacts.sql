@@ -15,7 +15,9 @@ CREATE TABLE contacts (
         'SQL',
         'OPPORTUNITY',
         'CUSTOMER',
-        'EVANGELIST'
+        'EVANGELIST',
+        'DORMANT'
+
     ) DEFAULT 'LEAD',
 
     source VARCHAR(255),
