@@ -12,7 +12,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 
-const Sidebar = ({ activeStage, onStageChange, contactCounts = {}, collapsed = false, onToggle }) => {
+const Sidebar = ({ activeStage, onStageChange, contactCounts = {}, collapsed, onToggle }) => {
   const stages = [
     { 
       id: 'LEAD', 
@@ -73,31 +73,25 @@ const Sidebar = ({ activeStage, onStageChange, contactCounts = {}, collapsed = f
   ];
 
   return (
-    <aside className="fixed left-0 top-0 h-full bg-white border-r border-gray-200 shadow-sm z-30 w-64 flex flex-col">
-      {/* Logo - Always visible and static */}
-      <div className="h-16 flex items-center px-4 border-b border-gray-100 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-          </div>
-          <span className="font-bold text-gray-800 text-lg">CRM Pro</span>
-        </div>
-      </div>
-
-      {/* Scrollable Pipeline Section */}
+    <aside 
+      className={`h-full bg-white border-r border-gray-200 shadow-sm flex flex-col transition-all duration-300 ease-in-out ${
+        collapsed ? 'w-16' : 'w-64'
+      }`}
+    >
+      {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="p-4">
-          {/* Pipeline Header with Toggle */}
+          {/* Pipeline Header with Toggle Arrow */}
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              Pipeline
-            </h3>
+            {!collapsed && (
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                Pipeline
+              </h3>
+            )}
             <button
               onClick={onToggle}
-              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-              title={collapsed ? 'Expand' : 'Collapse'}
+              className={`p-1.5 hover:bg-gray-100 rounded-lg transition-colors ${collapsed ? 'mx-auto' : ''}`}
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               {collapsed ? (
                 <ChevronRight className="w-4 h-4 text-gray-400" />
@@ -108,7 +102,7 @@ const Sidebar = ({ activeStage, onStageChange, contactCounts = {}, collapsed = f
           </div>
 
           {/* Pipeline Navigation */}
-          <nav className={`space-y-1 transition-all duration-300 ${collapsed ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100'}`}>
+          <nav className="space-y-1">
             {stages.map((stage) => {
               const Icon = stage.icon;
               const isActive = activeStage === stage.id;
@@ -122,66 +116,52 @@ const Sidebar = ({ activeStage, onStageChange, contactCounts = {}, collapsed = f
                     isActive 
                       ? stage.activeColor + ' shadow-sm' 
                       : 'text-gray-600 hover:bg-gray-50'
-                  }`}
+                  } ${collapsed ? 'justify-center px-2' : ''}`}
+                  title={collapsed ? stage.label : undefined}
                 >
                   <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? '' : stage.color}`} />
-                  <span className="flex-1 text-left font-medium text-sm">{stage.label}</span>
-                  {count > 0 && (
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      isActive ? 'bg-white/20' : stage.bgColor + ' ' + stage.color
-                    }`}>
-                      {count}
-                    </span>
+                  {!collapsed && (
+                    <>
+                      <span className="flex-1 text-left font-medium text-sm">{stage.label}</span>
+                      {count > 0 && (
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          isActive ? 'bg-white/20' : stage.bgColor + ' ' + stage.color
+                        }`}>
+                          {count}
+                        </span>
+                      )}
+                    </>
                   )}
                 </button>
               );
             })}
           </nav>
-
-          {/* Collapsed State - Show only icons */}
-          {collapsed && (
-            <nav className="space-y-1">
-              {stages.map((stage) => {
-                const Icon = stage.icon;
-                const isActive = activeStage === stage.id;
-                
-                return (
-                  <button
-                    key={stage.id}
-                    onClick={() => onStageChange(stage.id)}
-                    className={`w-full flex items-center justify-center p-2.5 rounded-lg transition-all ${
-                      isActive 
-                        ? stage.activeColor + ' shadow-sm' 
-                        : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                    title={stage.label}
-                  >
-                    <Icon className={`w-5 h-5 ${isActive ? '' : stage.color}`} />
-                  </button>
-                );
-              })}
-            </nav>
-          )}
         </div>
 
         {/* Divider */}
-        <div className="mx-4 border-t border-gray-100 my-2"></div>
+        <div className={`border-t border-gray-100 my-2 ${collapsed ? 'mx-2' : 'mx-4'}`}></div>
 
-        {/* Other Menu Items */}
+        {/* Insights Section */}
         <div className="p-4">
-          <h3 className={`text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 ${collapsed ? 'sr-only' : ''}`}>
-            Insights
-          </h3>
+          {!collapsed && (
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+              Insights
+            </h3>
+          )}
           <nav className="space-y-1">
             <button
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all ${collapsed ? 'justify-center' : ''}`}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all ${
+                collapsed ? 'justify-center px-2' : ''
+              }`}
               title="Analytics"
             >
               <BarChart3 className="w-5 h-5 flex-shrink-0" />
               {!collapsed && <span className="font-medium text-sm">Analytics</span>}
             </button>
             <button
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all ${collapsed ? 'justify-center' : ''}`}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all ${
+                collapsed ? 'justify-center px-2' : ''
+              }`}
               title="Settings"
             >
               <Settings className="w-5 h-5 flex-shrink-0" />

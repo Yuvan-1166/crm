@@ -43,7 +43,7 @@ const Dashboard = () => {
       const data = await getContacts({ status: activeStage });
       const contactsArray = Array.isArray(data) ? data : [];
       setContacts(contactsArray);
-      
+
       // Update counts
       const counts = {};
       counts[activeStage] = contactsArray.length;
@@ -110,7 +110,7 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Sidebar - Desktop */}
-      <div className="hidden lg:block">
+      <div className={`hidden lg:block fixed left-0 top-0 h-screen z-30 transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
         <Sidebar
           activeStage={activeStage}
           onStageChange={setActiveStage}
@@ -123,7 +123,7 @@ const Dashboard = () => {
       {/* Mobile Sidebar Overlay */}
       {mobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-50">
-          <div 
+          <div
             className="absolute inset-0 bg-black/50"
             onClick={() => setMobileMenuOpen(false)}
           />
@@ -143,10 +143,10 @@ const Dashboard = () => {
       )}
 
       {/* Main Content */}
-      <div className="lg:ml-64 transition-all duration-300">
+      <div className={`transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
         {/* Top Header */}
         <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-gray-100">
-          <div className="flex items-center justify-between h-16 px-4 lg:px-8">
+          <div className="flex items-center justify-between h-14 px-4 lg:px-6">
             {/* Left - Mobile Menu */}
             <div className="flex items-center gap-4">
               <button
@@ -155,7 +155,7 @@ const Dashboard = () => {
               >
                 <Menu className="w-5 h-5 text-gray-600" />
               </button>
-              
+
               {/* Page Title - Desktop */}
               <div className="hidden md:block">
                 <h1 className="text-lg font-semibold text-gray-900">
@@ -246,7 +246,7 @@ const Dashboard = () => {
 
         {/* Error Message */}
         {error && (
-          <div className="mx-4 lg:mx-8 mt-4">
+          <div className="mx-4 lg:mx-6 mt-3">
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
               <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -262,7 +262,7 @@ const Dashboard = () => {
         )}
 
         {/* Page Content */}
-        <main className="p-4 lg:p-8">
+        <main className="p-4 lg:p-6">
           <ContactGrid
             contacts={contacts}
             onContactSelect={setSelectedContact}
@@ -278,7 +278,7 @@ const Dashboard = () => {
       {/* Contact Detail Sidebar */}
       {selectedContact && (
         <>
-          <div 
+          <div
             className="fixed inset-0 bg-black/50 z-40"
             onClick={() => setSelectedContact(null)}
           />
