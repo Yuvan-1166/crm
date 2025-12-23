@@ -1,6 +1,49 @@
 import * as employeeService from "./employee.service.js";
 
 /**
+ * @desc   Complete employee profile after Google OAuth
+ * @route  POST /employees/complete-profile
+ * @access Employee
+ */
+export const completeProfile = async (req, res, next) => {
+  try {
+    const { name, phone, role, department } = req.body;
+    const empId = req.user.empId;
+
+    // Validate required fields
+    if (!name || !phone || !role || !department) {
+      return res.status(400).json({
+        message: "Name, phone, role, and department are required",
+      });
+    }
+
+    // Update employee profile
+    await employeeService.updateEmployee(empId, {
+      name,
+      phone,
+      role,
+      department,
+    });
+
+    // Get updated employee data
+    const updatedEmployee = await employeeService.getEmployeeById(empId);
+
+    res.json({
+      message: "Profile completed successfully",
+      user: {
+        name: updatedEmployee.name,
+        email: updatedEmployee.email,
+        phone: updatedEmployee.phone,
+        department: updatedEmployee.department,
+        role: updatedEmployee.role,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * @desc   Create a new employee
  * @route  POST /employees
  * @access Admin

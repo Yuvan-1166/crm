@@ -2,11 +2,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
+import OnboardingPage from './pages/OnboardingPage';
 import Dashboard from './pages/Dashboard';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, needsOnboarding } = useAuth();
 
   if (loading) {
     return (
@@ -16,12 +17,43 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  return isAuthenticated ? children : <Navigate to="/login" />;
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
+  }
+
+  if (needsOnboarding) {
+    return <Navigate to="/onboarding" />;
+  }
+
+  return children;
+};
+
+// Onboarding Route Component
+const OnboardingRoute = ({ children }) => {
+  const { isAuthenticated, loading, needsOnboarding } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-sky-100 via-blue-50 to-cyan-100 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
+  }
+
+  if (!needsOnboarding) {
+    return <Navigate to="/dashboard" />;
+  }
+
+  return children;
 };
 
 // Public Route Component (redirect if already logged in)
 const PublicRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, needsOnboarding } = useAuth();
 
   if (loading) {
     return (
@@ -31,7 +63,14 @@ const PublicRoute = ({ children }) => {
     );
   }
 
-  return isAuthenticated ? <Navigate to="/dashboard" /> : children;
+  if (isAuthenticated) {
+    if (needsOnboarding) {
+      return <Navigate to="/onboarding" />;
+    }
+    return <Navigate to="/dashboard" />;
+  }
+
+  return children;
 };
 
 function App() {
@@ -48,6 +87,14 @@ function App() {
                 <PublicRoute>
                   <LoginPage />
                 </PublicRoute>
+              }
+            />
+            <Route
+              path="/onboarding"
+              element={
+                <OnboardingRoute>
+                  <OnboardingPage />
+                </OnboardingRoute>
               }
             />
             <Route

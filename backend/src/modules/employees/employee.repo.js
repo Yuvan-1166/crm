@@ -11,9 +11,10 @@ export const createEmployee = async (data) => {
       name,
       email,
       phone,
-      role
+      role,
+      department
     )
-    VALUES (?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?)
     `,
     [
       data.company_id || null,
@@ -21,6 +22,7 @@ export const createEmployee = async (data) => {
       data.email,
       data.phone || null,
       data.role || "EMPLOYEE",
+      data.department || null,
     ]
   );
 
@@ -84,6 +86,11 @@ export const updateEmployee = async (empId, updates) => {
   if (updates.role) {
     fields.push("role = ?");
     values.push(updates.role);
+  }
+
+  if (updates.department !== undefined) {
+    fields.push("department = ?");
+    values.push(updates.department);
   }
 
   if (updates.company_id) {

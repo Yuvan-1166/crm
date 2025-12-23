@@ -6,9 +6,17 @@
   "scripts": {
     "start": "NODE_ENV=production node src/app.js",
     "dev": "NODE_ENV=development nodemon src/app.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "migrate:add-department": "node scripts/add-department-field.js",
+    "test:onboarding": "node scripts/test-onboarding.js",
+    "check:setup": "node scripts/check-setup.js"
   },
-  "keywords": ["crm", "sales", "marketing", "leads"],
+  "keywords": [
+    "crm",
+    "sales",
+    "marketing",
+    "leads"
+  ],
   "author": "",
   "license": "ISC",
   "description": "CRM Platform Backend - Lead to Evangelist Pipeline",

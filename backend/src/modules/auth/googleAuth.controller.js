@@ -30,6 +30,7 @@ export const googleLogin = async (req, res, next) => {
         name,
         email,
         role: "EMPLOYEE",
+        // Leave phone and department null to indicate profile needs completion
       });
     }
 
@@ -49,6 +50,8 @@ export const googleLogin = async (req, res, next) => {
       user: {
         name: employee.name,
         email: employee.email,
+        phone: employee.phone,
+        department: employee.department,
         role: employee.role,
       },
     });

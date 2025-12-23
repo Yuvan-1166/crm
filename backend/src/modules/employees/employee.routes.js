@@ -7,6 +7,20 @@ import { USER_ROLES } from "../../utils/constants.js";
 const router = Router();
 
 /* ---------------------------------------------------
+   COMPLETE EMPLOYEE PROFILE
+--------------------------------------------------- */
+/**
+ * @route   POST /employees/complete-profile
+ * @desc    Complete employee profile after Google OAuth
+ * @access  Employee
+ */
+router.post(
+  "/complete-profile",
+  authenticateEmployee,
+  employeeController.completeProfile
+);
+
+/* ---------------------------------------------------
    GET CURRENT USER PROFILE
 --------------------------------------------------- */
 /**

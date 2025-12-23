@@ -17,7 +17,10 @@ const LoginPage = () => {
     try {
       const data = await googleLogin(credentialResponse.credential);
       login(data.user, data.token);
-      navigate('/dashboard');
+      
+      // Navigation will be handled by the route protection logic in App.jsx
+      // If user needs onboarding, they'll be redirected to /onboarding
+      // If profile is complete, they'll go to /dashboard
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please try again.');
     } finally {

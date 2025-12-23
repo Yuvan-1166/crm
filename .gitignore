@@ -1,4 +1,10 @@
 .env
 node_modules/
 backend/scripts/
+.kiro/
+.vscode/
+IMPLEMENTATION_STATUS.md
+IMPLEMENTATION_SUMMARY.md
+TESTING_GUIDE.md
+frontend/ONBOARDING_FLOW.md
 

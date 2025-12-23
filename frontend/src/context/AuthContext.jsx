@@ -33,12 +33,16 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('user');
   };
 
+  // Check if user needs to complete onboarding
+  const needsOnboarding = user && (!user.phone || !user.department);
+
   const value = {
     user,
     token,
     loading,
     login,
     logout,
+    needsOnboarding,
     isAuthenticated: !!token,
   };
 
