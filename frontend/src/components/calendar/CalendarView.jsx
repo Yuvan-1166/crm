@@ -30,35 +30,22 @@ import {
   deleteTask,
 } from "../../services/taskService";
 import { getContacts } from "../../services/contactService";
+import { StatCard, TaskCard, TaskModal } from '../calendar';
+import { TASK_TYPES, PRIORITY_COLORS, STATUS_COLORS } from "./constants";
 
-// Task type configuration
-const TASK_TYPES = {
-  FOLLOW_UP: { icon: Target, color: "sky", label: "Follow-up" },
-  CALL: { icon: Phone, color: "green", label: "Call" },
-  MEETING: { icon: Users, color: "purple", label: "Meeting" },
-  EMAIL: { icon: Mail, color: "blue", label: "Email" },
-  DEMO: { icon: Zap, color: "orange", label: "Demo" },
-  DEADLINE: { icon: AlertCircle, color: "red", label: "Deadline" },
-  REMINDER: { icon: Bell, color: "amber", label: "Reminder" },
-  OTHER: { icon: CalendarIcon, color: "gray", label: "Other" },
+
+const toLocalDateOnly = (dateStr) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr); // parse UTC properly
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
 };
 
-const PRIORITY_COLORS = {
-  LOW: "bg-gray-100 text-gray-600 border-gray-200",
-  MEDIUM: "bg-blue-100 text-blue-600 border-blue-200",
-  HIGH: "bg-orange-100 text-orange-600 border-orange-200",
-  URGENT: "bg-red-100 text-red-600 border-red-200",
-};
 
-const STATUS_COLORS = {
-  PENDING: "border-l-amber-400",
-  IN_PROGRESS: "border-l-blue-400",
-  COMPLETED: "border-l-emerald-400 opacity-60",
-  CANCELLED: "border-l-gray-300 opacity-40",
-  OVERDUE: "border-l-red-500",
-};
-
-export default function CalendarView() {
+const CalendarView = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState("month"); // 'month', 'week', 'today'
@@ -67,7 +54,8 @@ export default function CalendarView() {
   const [todaysTasks, setTodaysTasks] = useState([]);
   const [overdueTasks, setOverdueTasks] = useState([]);
   const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true); // Only for first load
+  const [refreshing, setRefreshing] = useState(false); // For subsequent updates
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [contacts, setContacts] = useState([]);
@@ -82,36 +70,58 @@ export default function CalendarView() {
   };
 
   // Fetch data
-  const fetchData = async () => {
+  const fetchData = async (isInitial = false) => {
     try {
-      setLoading(true);
+      // Only show full loading on initial load
+      if (isInitial) {
+        setInitialLoading(true);
+      } else {
+        setRefreshing(true);
+      }
       
       // Calculate date range for current view
       const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
       const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
       
-      const [calendarTasks, today, overdue, taskStats, contactList] = await Promise.all([
-        getCalendarTasks(formatDate(start), formatDate(end)),
-        getTodaysTasks(),
-        getOverdueTasks(),
-        getTaskStats(),
-        getContacts({}).catch(() => []),
-      ]);
-
-      setTasks(calendarTasks);
-      setTodaysTasks(today);
-      setOverdueTasks(overdue);
-      setStats(taskStats);
-      setContacts(Array.isArray(contactList) ? contactList : []);
+      // Fetch calendar tasks for current month - this is the main one that changes
+      const calendarTasks = await getCalendarTasks(formatDate(start), formatDate(end));
+      const normalizedTasks = calendarTasks.map(task => ({
+        ...task,
+        due_date: toLocalDateOnly(task.due_date), // 🔥 normalize ONCE
+        }));
+      setTasks(normalizedTasks);
+      
+      // Only fetch these on initial load or manual refresh (they don't change with month navigation)
+      if (isInitial || !stats) {
+        const [today, overdue, taskStats, contactList] = await Promise.all([
+          getTodaysTasks(),
+          getOverdueTasks(),
+          getTaskStats(),
+          getContacts({}).catch(() => []),
+        ]);
+        setTodaysTasks(today);
+        setOverdueTasks(overdue);
+        setStats(taskStats);
+        setContacts(Array.isArray(contactList) ? contactList : []);
+      }
     } catch (error) {
       console.error("Failed to fetch calendar data:", error);
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
+      setRefreshing(false);
     }
   };
 
+  // Initial load
   useEffect(() => {
-    fetchData();
+    fetchData(true);
+  }, []);
+
+  // Month change - only fetch calendar tasks
+  useEffect(() => {
+    if (!initialLoading) {
+      fetchData(false);
+    }
   }, [currentDate]);
 
   // Format time to HH:MM
@@ -166,16 +176,8 @@ export default function CalendarView() {
 
   // Get tasks for a specific date
   const getTasksForDate = (date) => {
-    return tasks.filter((task) => {
-        if (!task.due_date) return false;
-
-        const taskDate = new Date(task.due_date);
-        return (
-        taskDate.getFullYear() === date.getFullYear() &&
-        taskDate.getMonth() === date.getMonth() &&
-        taskDate.getDate() === date.getDate()
-        );
-    });
+    const dateStr = formatDate(date);
+    return tasks.filter(task => task.due_date === dateStr);
   };
 
   // Navigation
@@ -217,7 +219,8 @@ export default function CalendarView() {
     try {
       const newStatus = task.status === "COMPLETED" ? "PENDING" : "COMPLETED";
       await updateTask(task.task_id, { status: newStatus });
-      fetchData();
+      // Refresh all data including stats when status changes
+      fetchData(true);
     } catch (error) {
       console.error("Failed to update task:", error);
     }
@@ -228,7 +231,8 @@ export default function CalendarView() {
     if (!confirm("Are you sure you want to delete this task?")) return;
     try {
       await deleteTask(taskId);
-      fetchData();
+      // Refresh all data including stats when task is deleted
+      fetchData(true);
     } catch (error) {
       console.error("Failed to delete task:", error);
     }
@@ -241,12 +245,12 @@ export default function CalendarView() {
     if (focusMode === "today") {
       filtered = todaysTasks;
     } else if (focusMode === "week") {
-      const today = new Date();
-      const weekEnd = new Date(today);
-      weekEnd.setDate(today.getDate() + 7);
+      const todayStr = formatDate(new Date());
+      const weekEnd = new Date();
+      weekEnd.setDate(weekEnd.getDate() + 7);
+      const weekEndStr = formatDate(weekEnd);
       filtered = tasks.filter((task) => {
-        const taskDate = new Date(task.due_date);
-        return taskDate >= today && taskDate <= weekEnd;
+        return task.due_date >= todayStr && task.due_date <= weekEndStr;
       });
     } else {
       filtered = getTasksForDate(selectedDate);
@@ -268,7 +272,8 @@ export default function CalendarView() {
   const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const monthName = currentDate.toLocaleString("default", { month: "long", year: "numeric" });
 
-  if (loading && tasks.length === 0) {
+  // Only show full loading screen on initial load
+  if (initialLoading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-3">
@@ -364,11 +369,17 @@ export default function CalendarView() {
         <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
           {/* Calendar Header */}
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-semibold text-gray-800">{monthName}</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-semibold text-gray-800">{monthName}</h2>
+              {refreshing && (
+                <RefreshCw className="w-4 h-4 text-sky-500 animate-spin" />
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={goToPrevMonth}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                disabled={refreshing}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
               >
                 <ChevronLeft className="w-5 h-5 text-gray-600" />
               </button>
@@ -383,7 +394,8 @@ export default function CalendarView() {
               </button>
               <button
                 onClick={goToNextMonth}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                disabled={refreshing}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
               >
                 <ChevronRight className="w-5 h-5 text-gray-600" />
               </button>
@@ -400,7 +412,7 @@ export default function CalendarView() {
           </div>
 
           {/* Calendar Grid */}
-          <div className="grid grid-cols-7 gap-1">
+          <div className={`grid grid-cols-7 gap-1 transition-opacity duration-200 ${refreshing ? 'opacity-60' : 'opacity-100'}`}>
             {days.map((day, index) => {
               const dayTasks = getTasksForDate(day.date);
               const hasOverdue = dayTasks.some((t) => t.status === "OVERDUE");
@@ -546,7 +558,8 @@ export default function CalendarView() {
               } else {
                 await createTask(taskData);
               }
-              fetchData();
+              // Refresh all data including stats when task is modified
+              fetchData(true);
               setShowAddModal(false);
               setEditingTask(null);
             } catch (error) {
@@ -558,303 +571,4 @@ export default function CalendarView() {
     </div>
   );
 }
-
-// Stat Card Component
-function StatCard({ label, value, icon, color, urgent }) {
-  const colorClasses = {
-    sky: "bg-sky-50 text-sky-600 border-sky-200",
-    blue: "bg-blue-50 text-blue-600 border-blue-200",
-    emerald: "bg-emerald-50 text-emerald-600 border-emerald-200",
-    red: "bg-red-50 text-red-600 border-red-200",
-    gray: "bg-gray-50 text-gray-600 border-gray-200",
-  };
-
-  return (
-    <div className={`p-4 rounded-xl border-2 ${colorClasses[color]} ${urgent ? "animate-pulse" : ""}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-2xl font-bold">{value}</p>
-          <p className="text-sm opacity-70">{label}</p>
-        </div>
-        <div className={`p-2 rounded-lg ${color === "sky" ? "bg-sky-100" : color === "blue" ? "bg-blue-100" : color === "emerald" ? "bg-emerald-100" : color === "red" ? "bg-red-100" : "bg-gray-100"}`}>
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Task Card Component
-function TaskCard({ task, onToggleComplete, onEdit, onDelete }) {
-  const config = TASK_TYPES[task.task_type] || TASK_TYPES.OTHER;
-  const Icon = config.icon;
-  const isCompleted = task.status === "COMPLETED";
-  const isOverdue = task.status === "OVERDUE";
-
-  const formatTime = (timeStr) => {
-    if (!timeStr) return "";
-    const [hours, minutes] = timeStr.split(":");
-    const h = parseInt(hours);
-    const ampm = h >= 12 ? "PM" : "AM";
-    const hour12 = h % 12 || 12;
-    return `${hour12}:${minutes} ${ampm}`;
-  };
-
-  return (
-    <div
-      className={`
-        group p-3 border-l-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors
-        ${STATUS_COLORS[task.status]}
-      `}
-    >
-      <div className="flex items-start gap-3">
-        {/* Checkbox */}
-        <button
-          onClick={() => onToggleComplete(task)}
-          className={`
-            mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors
-            ${isCompleted ? "bg-emerald-500 border-emerald-500 text-white" : "border-gray-300 hover:border-sky-500"}
-          `}
-        >
-          {isCompleted && <CheckCircle className="w-3 h-3" />}
-        </button>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <Icon className={`w-4 h-4 text-${config.color}-500`} />
-            <span
-              className={`font-medium text-sm ${isCompleted ? "line-through text-gray-400" : "text-gray-800"}`}
-            >
-              {task.title}
-            </span>
-            {isOverdue && (
-              <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
-                Overdue
-              </span>
-            )}
-          </div>
-
-          {/* Meta Info */}
-          <div className="flex items-center gap-3 text-xs text-gray-500">
-            {task.due_time && (
-              <span className="flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                {formatTime(task.due_time)}
-              </span>
-            )}
-            {task.contact_name && (
-              <span className="truncate max-w-[120px]">
-                {task.contact_name}
-              </span>
-            )}
-            <span className={`px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority]}`}>
-              {task.priority}
-            </span>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
-          <button
-            onClick={() => onEdit(task)}
-            className="p-1 hover:bg-gray-200 rounded text-gray-500"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-            </svg>
-          </button>
-          <button
-            onClick={() => onDelete(task.task_id)}
-            className="p-1 hover:bg-red-100 rounded text-gray-500 hover:text-red-500"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Task Modal Component
-function TaskModal({ isOpen, task, contacts, selectedDate, onClose, onSave }) {
-  // Helper to format date in local timezone
-  const formatLocalDate = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const [formData, setFormData] = useState({
-    title: task?.title || "",
-    description: task?.description || "",
-    task_type: task?.task_type || "FOLLOW_UP",
-    priority: task?.priority || "MEDIUM",
-    due_date: task?.due_date?.split("T")[0] || formatLocalDate(selectedDate),
-    due_time: task?.due_time?.substring(0, 5) || "",
-    duration_minutes: task?.duration_minutes || 30,
-    contact_id: task?.contact_id || "",
-    is_all_day: task?.is_all_day || false,
-  });
-  const [saving, setSaving] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.title || !formData.due_date) return;
-    
-    setSaving(true);
-    await onSave({
-      ...formData,
-      contact_id: formData.contact_id || null,
-      due_time: formData.is_all_day ? null : formData.due_time || null,
-    });
-    setSaving(false);
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="p-5 border-b border-gray-100">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-800">
-              {task ? "Edit Task" : "Add New Task"}
-            </h2>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Title */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-            <input
-              type="text"
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-              placeholder="Task title"
-              required
-            />
-          </div>
-
-          {/* Type & Priority */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-              <select
-                value={formData.task_type}
-                onChange={(e) => setFormData({ ...formData, task_type: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-              >
-                {Object.entries(TASK_TYPES).map(([key, config]) => (
-                  <option key={key} value={key}>{config.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-              <select
-                value={formData.priority}
-                onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-              >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Date & Time */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Due Date *</label>
-              <input
-                type="date"
-                value={formData.due_date}
-                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
-              <input
-                type="time"
-                value={formData.due_time}
-                onChange={(e) => setFormData({ ...formData, due_time: e.target.value })}
-                disabled={formData.is_all_day}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:bg-gray-100"
-              />
-            </div>
-          </div>
-
-          {/* All Day Toggle */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={formData.is_all_day}
-              onChange={(e) => setFormData({ ...formData, is_all_day: e.target.checked })}
-              className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500"
-            />
-            <span className="text-sm text-gray-700">All day event</span>
-          </label>
-
-          {/* Contact */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Related Contact</label>
-            <select
-              value={formData.contact_id}
-              onChange={(e) => setFormData({ ...formData, contact_id: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-            >
-              <option value="">No contact</option>
-              {contacts.map((contact) => (
-                <option key={contact.contact_id} value={contact.contact_id}>
-                  {contact.name} - {contact.email}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 resize-none"
-              placeholder="Add notes or details..."
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-3 pt-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !formData.title}
-              className="flex-1 px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-lg hover:from-sky-600 hover:to-blue-700 transition-all disabled:opacity-50"
-            >
-              {saving ? "Saving..." : task ? "Update" : "Create"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
+export default CalendarView;
