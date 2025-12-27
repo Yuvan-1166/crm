@@ -21,14 +21,23 @@ import {
   Trash2,
   Shield,
   ShieldCheck,
-  MoreVertical
+  MoreVertical,
+  Send,
+  Clock,
+  Ban,
+  RefreshCw,
+  UserCheck,
+  UserX
 } from 'lucide-react';
 import { 
   getTeamMembers, 
+  getTeamWithStatus,
   getEmployeeActivities, 
   addEmployee, 
   removeEmployee,
-  updateEmployeeRole 
+  updateEmployeeRole,
+  resendInvitation,
+  toggleEmployeeStatus
 } from '../services/employeeService';
 import Profile from '../components/layout/Profile';
 
@@ -41,6 +50,7 @@ const AdminDashboard = () => {
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
   
@@ -49,6 +59,7 @@ const AdminDashboard = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(null);
+  const [inviteLoading, setInviteLoading] = useState(null); // Track which employee is being invited
   
   // Close user menu when clicking outside
   useEffect(() => {
@@ -86,7 +97,7 @@ const AdminDashboard = () => {
   const fetchEmployees = async () => {
     try {
       setLoading(true);
-      const data = await getTeamMembers();
+      const data = await getTeamWithStatus();
       setEmployees(data || []);
     } catch (error) {
       console.error('Error fetching employees:', error);
@@ -181,6 +192,38 @@ const AdminDashboard = () => {
     }
   };
 
+  // Handle resend invitation
+  const handleResendInvitation = async (empId) => {
+    try {
+      setInviteLoading(empId);
+      await resendInvitation(empId);
+      alert('Invitation email sent successfully!');
+      await fetchEmployees();
+      setActionMenuOpen(null);
+    } catch (error) {
+      console.error('Error resending invitation:', error);
+      alert(error.response?.data?.message || 'Failed to send invitation');
+    } finally {
+      setInviteLoading(null);
+    }
+  };
+
+  // Handle toggle employee status
+  const handleToggleStatus = async (empId, currentStatus) => {
+    const newStatus = currentStatus === 'DISABLED' ? 'ACTIVE' : 'DISABLED';
+    try {
+      setActionLoading(true);
+      await toggleEmployeeStatus(empId, newStatus);
+      await fetchEmployees();
+      setActionMenuOpen(null);
+    } catch (error) {
+      console.error('Error toggling status:', error);
+      alert(error.response?.data?.message || 'Failed to update status');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Get unique departments for filter
   const departments = [...new Set(employees.map(e => e.department).filter(Boolean))];
 
@@ -189,13 +232,52 @@ const AdminDashboard = () => {
     const matchesSearch = emp.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           emp.email?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesDept = filterDepartment === 'all' || emp.department === filterDepartment;
-    return matchesSearch && matchesDept;
+    const matchesStatus = filterStatus === 'all' || emp.invitation_status === filterStatus;
+    return matchesSearch && matchesDept && matchesStatus;
   });
 
   // Calculate stats
   const totalLeads = employees.reduce((sum, emp) => sum + (emp.contactsHandled || 0), 0);
   const totalConversions = employees.reduce((sum, emp) => sum + (emp.dealsClosed || 0), 0);
   const totalRevenue = employees.reduce((sum, emp) => sum + (emp.totalRevenue || 0), 0);
+  
+  // Calculate invitation stats
+  const invitedCount = employees.filter(e => e.invitation_status === 'INVITED').length;
+  const activeCount = employees.filter(e => e.invitation_status === 'ACTIVE').length;
+  const disabledCount = employees.filter(e => e.invitation_status === 'DISABLED').length;
+
+  const getInvitationStatusBadge = (status) => {
+    switch (status) {
+      case 'INVITED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-100 text-amber-700">
+            <Clock className="w-3 h-3" />
+            Invited
+          </span>
+        );
+      case 'ACTIVE':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700">
+            <CheckCircle2 className="w-3 h-3" />
+            Active
+          </span>
+        );
+      case 'DISABLED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-100 text-red-700">
+            <Ban className="w-3 h-3" />
+            Disabled
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-700">
+            <AlertCircle className="w-3 h-3" />
+            {status || 'Pending'}
+          </span>
+        );
+    }
+  };
 
   const getInitials = (name) => {
     if (!name) return '?';
@@ -290,8 +372,13 @@ const AdminDashboard = () => {
                 <Users className="w-6 h-6 text-sky-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Team Members</p>
+                <p className="text-sm text-gray-500">Total Team</p>
                 <p className="text-2xl font-bold text-gray-900">{employees.length}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-emerald-600">{activeCount} active</span>
+                  <span className="text-xs text-gray-400">•</span>
+                  <span className="text-xs text-amber-600">{invitedCount} pending</span>
+                </div>
               </div>
             </div>
           </div>
@@ -351,6 +438,21 @@ const AdminDashboard = () => {
                   />
                 </div>
                 
+                {/* Status Filter */}
+                <div className="relative">
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="appearance-none px-4 py-2.5 pr-10 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white text-sm font-medium"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="INVITED">Invited</option>
+                    <option value="DISABLED">Disabled</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+                
                 {/* Department Filter */}
                 <div className="relative">
                   <select
@@ -370,7 +472,7 @@ const AdminDashboard = () => {
                   className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl font-medium text-sm hover:from-sky-600 hover:to-blue-700 transition-all shadow-lg shadow-sky-500/25"
                 >
                   <UserPlus className="w-4 h-4" />
-                  Add Employee
+                  Invite Employee
                 </button>
               </div>
             </div>
@@ -400,21 +502,23 @@ const AdminDashboard = () => {
                   <tr className="bg-gray-50">
                     <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Employee</th>
                     <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
+                    <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Department</th>
                     <th className="text-center py-3 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Leads</th>
-                    <th className="text-center py-3 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Revenue</th>
                     <th className="text-center py-3 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredEmployees.map((employee) => (
-                    <tr key={employee.emp_id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={employee.emp_id} className={`hover:bg-gray-50 transition-colors ${employee.invitation_status === 'DISABLED' ? 'opacity-60' : ''}`}>
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm ${
-                            employee.role === 'ADMIN' 
-                              ? 'bg-gradient-to-br from-amber-400 to-orange-600' 
-                              : 'bg-gradient-to-br from-sky-400 to-blue-600'
+                            employee.invitation_status === 'DISABLED'
+                              ? 'bg-gray-400'
+                              : employee.role === 'ADMIN' 
+                                ? 'bg-gradient-to-br from-amber-400 to-orange-600' 
+                                : 'bg-gradient-to-br from-sky-400 to-blue-600'
                           }`}>
                             {getInitials(employee.name)}
                           </div>
@@ -439,6 +543,9 @@ const AdminDashboard = () => {
                         </span>
                       </td>
                       <td className="py-4 px-6">
+                        {getInvitationStatusBadge(employee.invitation_status)}
+                      </td>
+                      <td className="py-4 px-6">
                         <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium">
                           {employee.department || 'N/A'}
                         </span>
@@ -446,20 +553,33 @@ const AdminDashboard = () => {
                       <td className="py-4 px-6 text-center">
                         <span className="text-sm font-semibold text-gray-900">{employee.contactsHandled || 0}</span>
                       </td>
-                      <td className="py-4 px-6 text-center">
-                        <span className="text-sm font-bold text-gray-900">
-                          ${((employee.totalRevenue || 0) / 1000).toFixed(1)}k
-                        </span>
-                      </td>
                       <td className="py-4 px-6">
                         <div className="flex items-center justify-center gap-2">
-                          <button 
-                            onClick={() => handleViewEmployee(employee)}
-                            className="p-2 text-gray-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"
-                            title="View Details"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
+                          {employee.invitation_status === 'ACTIVE' && (
+                            <button 
+                              onClick={() => handleViewEmployee(employee)}
+                              className="p-2 text-gray-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"
+                              title="View Details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          )}
+                          
+                          {/* Resend Invite Button for INVITED status */}
+                          {employee.invitation_status === 'INVITED' && (
+                            <button 
+                              onClick={() => handleResendInvitation(employee.emp_id)}
+                              disabled={inviteLoading === employee.emp_id}
+                              className="p-2 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-50"
+                              title="Resend Invitation"
+                            >
+                              {inviteLoading === employee.emp_id ? (
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Send className="w-4 h-4" />
+                              )}
+                            </button>
+                          )}
                           
                           {/* Actions Menu */}
                           <div className="relative">
@@ -475,26 +595,72 @@ const AdminDashboard = () => {
                             </button>
                             
                             {actionMenuOpen === employee.emp_id && (
-                              <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50">
-                                {employee.role === 'EMPLOYEE' ? (
-                                  <button
-                                    onClick={() => handleRoleChange(employee.emp_id, 'ADMIN')}
-                                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                                  >
-                                    <ShieldCheck className="w-4 h-4 text-amber-500" />
-                                    Promote to Admin
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => handleRoleChange(employee.emp_id, 'EMPLOYEE')}
-                                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                                    disabled={employee.emp_id === user?.emp_id}
-                                  >
-                                    <Shield className="w-4 h-4 text-sky-500" />
-                                    Demote to Employee
-                                  </button>
+                              <div className="absolute right-0 mt-1 w-52 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50">
+                                {/* Role change options */}
+                                {employee.invitation_status === 'ACTIVE' && (
+                                  <>
+                                    {employee.role === 'EMPLOYEE' ? (
+                                      <button
+                                        onClick={() => handleRoleChange(employee.emp_id, 'ADMIN')}
+                                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                      >
+                                        <ShieldCheck className="w-4 h-4 text-amber-500" />
+                                        Promote to Admin
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleRoleChange(employee.emp_id, 'EMPLOYEE')}
+                                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                        disabled={employee.emp_id === user?.emp_id}
+                                      >
+                                        <Shield className="w-4 h-4 text-sky-500" />
+                                        Demote to Employee
+                                      </button>
+                                    )}
+                                    <hr className="my-1 border-gray-100" />
+                                  </>
                                 )}
-                                <hr className="my-1 border-gray-100" />
+                                
+                                {/* Enable/Disable option */}
+                                {employee.emp_id !== user?.emp_id && (
+                                  <>
+                                    {employee.invitation_status === 'DISABLED' ? (
+                                      <button
+                                        onClick={() => handleToggleStatus(employee.emp_id, 'DISABLED')}
+                                        className="w-full px-4 py-2 text-left text-sm text-emerald-600 hover:bg-emerald-50 flex items-center gap-2"
+                                      >
+                                        <UserCheck className="w-4 h-4" />
+                                        Enable Account
+                                      </button>
+                                    ) : employee.invitation_status === 'ACTIVE' ? (
+                                      <button
+                                        onClick={() => handleToggleStatus(employee.emp_id, 'ACTIVE')}
+                                        className="w-full px-4 py-2 text-left text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2"
+                                      >
+                                        <UserX className="w-4 h-4" />
+                                        Disable Account
+                                      </button>
+                                    ) : null}
+                                    <hr className="my-1 border-gray-100" />
+                                  </>
+                                )}
+                                
+                                {/* Resend invite for INVITED */}
+                                {employee.invitation_status === 'INVITED' && (
+                                  <>
+                                    <button
+                                      onClick={() => handleResendInvitation(employee.emp_id)}
+                                      disabled={inviteLoading === employee.emp_id}
+                                      className="w-full px-4 py-2 text-left text-sm text-sky-600 hover:bg-sky-50 flex items-center gap-2"
+                                    >
+                                      <Send className="w-4 h-4" />
+                                      Resend Invitation
+                                    </button>
+                                    <hr className="my-1 border-gray-100" />
+                                  </>
+                                )}
+                                
+                                {/* Remove employee */}
                                 <button
                                   onClick={() => {
                                     setActionMenuOpen(null);
@@ -527,7 +693,7 @@ const AdminDashboard = () => {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                <h3 className="text-lg font-bold text-gray-900">Add New Employee</h3>
+                <h3 className="text-lg font-bold text-gray-900">Invite New Employee</h3>
                 <button
                   onClick={() => setShowAddModal(false)}
                   className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
@@ -537,6 +703,15 @@ const AdminDashboard = () => {
               </div>
               
               <form onSubmit={handleAddEmployee} className="p-6 space-y-4">
+                {/* Info Banner */}
+                <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-sm text-sky-700 flex items-start gap-2">
+                  <Send className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium">An invitation email will be sent</p>
+                    <p className="text-xs mt-1 text-sky-600">The employee will receive an email with a link to join the CRM. They can only sign in using Google with this exact email address.</p>
+                  </div>
+                </div>
+                
                 {formErrors.submit && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
                     {formErrors.submit}
@@ -569,6 +744,7 @@ const AdminDashboard = () => {
                     placeholder="john@company.com"
                   />
                   {formErrors.email && <p className="mt-1 text-xs text-red-500">{formErrors.email}</p>}
+                  <p className="mt-1 text-xs text-gray-500">Must be a Google account email</p>
                 </div>
                 
                 <div>
@@ -619,9 +795,19 @@ const AdminDashboard = () => {
                   <button
                     type="submit"
                     disabled={actionLoading}
-                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl font-medium hover:from-sky-600 hover:to-blue-700 transition-all disabled:opacity-50"
+                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl font-medium hover:from-sky-600 hover:to-blue-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {actionLoading ? 'Adding...' : 'Add Employee'}
+                    {actionLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        Send Invitation
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -670,7 +856,7 @@ const AdminDashboard = () => {
       {selectedEmployee && (
         <>
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+            className="fixed inset-0 bg-black/40 backdrop-blur-[1px] z-40"
             onClick={closeEmployeePanel}
           />
           
@@ -690,9 +876,11 @@ const AdminDashboard = () => {
             <div className="flex-1 overflow-y-auto">
               {/* Profile Header */}
               <div className={`px-6 py-8 ${
-                selectedEmployee.role === 'ADMIN'
-                  ? 'bg-gradient-to-r from-amber-500 to-orange-600'
-                  : 'bg-gradient-to-r from-sky-500 to-blue-600'
+                selectedEmployee.invitation_status === 'DISABLED'
+                  ? 'bg-gradient-to-r from-gray-500 to-gray-600'
+                  : selectedEmployee.role === 'ADMIN'
+                    ? 'bg-gradient-to-r from-amber-500 to-orange-600'
+                    : 'bg-gradient-to-r from-sky-500 to-blue-600'
               }`}>
                 <div className="flex items-center gap-4">
                   <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-white font-bold text-2xl ring-4 ring-white/30">
@@ -701,14 +889,32 @@ const AdminDashboard = () => {
                   <div className="text-white">
                     <h3 className="text-xl font-bold">{selectedEmployee.name}</h3>
                     <p className="text-white/80">{selectedEmployee.department || 'No department'}</p>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 mt-2 rounded-lg text-xs font-medium bg-white/20 text-white">
-                      {selectedEmployee.role === 'ADMIN' ? (
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                      ) : (
-                        <Shield className="w-3.5 h-3.5" />
-                      )}
-                      {selectedEmployee.role}
-                    </span>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-white/20 text-white">
+                        {selectedEmployee.role === 'ADMIN' ? (
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                        ) : (
+                          <Shield className="w-3.5 h-3.5" />
+                        )}
+                        {selectedEmployee.role}
+                      </span>
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${
+                        selectedEmployee.invitation_status === 'ACTIVE' 
+                          ? 'bg-emerald-500/30 text-white' 
+                          : selectedEmployee.invitation_status === 'DISABLED'
+                            ? 'bg-red-500/30 text-white'
+                            : 'bg-amber-500/30 text-white'
+                      }`}>
+                        {selectedEmployee.invitation_status === 'ACTIVE' ? (
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        ) : selectedEmployee.invitation_status === 'DISABLED' ? (
+                          <Ban className="w-3.5 h-3.5" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5" />
+                        )}
+                        {selectedEmployee.invitation_status || 'Pending'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -749,33 +955,84 @@ const AdminDashboard = () => {
               {/* Admin Actions */}
               <div className="p-6 border-b border-gray-100">
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Admin Actions</h4>
-                <div className="flex gap-3">
-                  {selectedEmployee.role === 'EMPLOYEE' ? (
+                <div className="flex flex-col gap-3">
+                  {/* Role Change - Only for ACTIVE employees */}
+                  {selectedEmployee.invitation_status === 'ACTIVE' && (
+                    <div className="flex gap-3">
+                      {selectedEmployee.role === 'EMPLOYEE' ? (
+                        <button
+                          onClick={() => handleRoleChange(selectedEmployee.emp_id, 'ADMIN')}
+                          disabled={actionLoading}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-700 rounded-xl font-medium text-sm hover:bg-amber-100 transition-colors"
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                          Promote to Admin
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleRoleChange(selectedEmployee.emp_id, 'EMPLOYEE')}
+                          disabled={actionLoading || selectedEmployee.emp_id === user?.emp_id}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-sky-50 text-sky-700 rounded-xl font-medium text-sm hover:bg-sky-100 transition-colors disabled:opacity-50"
+                        >
+                          <Shield className="w-4 h-4" />
+                          Demote to Employee
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Resend Invitation - Only for INVITED */}
+                  {selectedEmployee.invitation_status === 'INVITED' && (
                     <button
-                      onClick={() => handleRoleChange(selectedEmployee.emp_id, 'ADMIN')}
-                      disabled={actionLoading}
-                      className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-700 rounded-xl font-medium text-sm hover:bg-amber-100 transition-colors"
+                      onClick={() => handleResendInvitation(selectedEmployee.emp_id)}
+                      disabled={inviteLoading === selectedEmployee.emp_id}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-sky-50 text-sky-700 rounded-xl font-medium text-sm hover:bg-sky-100 transition-colors disabled:opacity-50"
                     >
-                      <ShieldCheck className="w-4 h-4" />
-                      Promote to Admin
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleRoleChange(selectedEmployee.emp_id, 'EMPLOYEE')}
-                      disabled={actionLoading || selectedEmployee.emp_id === user?.emp_id}
-                      className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-sky-50 text-sky-700 rounded-xl font-medium text-sm hover:bg-sky-100 transition-colors disabled:opacity-50"
-                    >
-                      <Shield className="w-4 h-4" />
-                      Demote to Employee
+                      {inviteLoading === selectedEmployee.emp_id ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" />
+                          Resend Invitation
+                        </>
+                      )}
                     </button>
                   )}
-                  <button
-                    onClick={() => setShowDeleteConfirm(selectedEmployee)}
-                    disabled={actionLoading || selectedEmployee.emp_id === user?.emp_id}
-                    className="px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors disabled:opacity-50"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  
+                  {/* Enable/Disable + Remove */}
+                  {selectedEmployee.emp_id !== user?.emp_id && (
+                    <div className="flex gap-3">
+                      {selectedEmployee.invitation_status === 'DISABLED' ? (
+                        <button
+                          onClick={() => handleToggleStatus(selectedEmployee.emp_id, 'DISABLED')}
+                          disabled={actionLoading}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl font-medium text-sm hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                        >
+                          <UserCheck className="w-4 h-4" />
+                          Enable Account
+                        </button>
+                      ) : selectedEmployee.invitation_status === 'ACTIVE' ? (
+                        <button
+                          onClick={() => handleToggleStatus(selectedEmployee.emp_id, 'ACTIVE')}
+                          disabled={actionLoading}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-700 rounded-xl font-medium text-sm hover:bg-amber-100 transition-colors disabled:opacity-50"
+                        >
+                          <UserX className="w-4 h-4" />
+                          Disable Account
+                        </button>
+                      ) : null}
+                      <button
+                        onClick={() => setShowDeleteConfirm(selectedEmployee)}
+                        disabled={actionLoading}
+                        className="px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
