@@ -80,16 +80,64 @@ export const getTeamPerformance = async () => {
 };
 
 /**
- * Add a new employee to the company (Admin only)
- * @param {Object} employeeData - Employee data (name, email, phone, department, role)
- * @returns {Promise<Object>} Created employee
+ * Add a new employee and send invitation (Admin only)
+ * @param {Object} employeeData - Employee data (name, email, phone, department, role, sendInvite)
+ * @returns {Promise<Object>} Created employee info
  */
 export const addEmployee = async (employeeData) => {
   try {
-    const response = await api.post('/employees', employeeData);
+    const response = await api.post('/employees', {
+      ...employeeData,
+      sendInvite: employeeData.sendInvite !== false // Default to true
+    });
     return response.data;
   } catch (error) {
     console.error('Error adding employee:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get team members with invitation status (Admin only)
+ * @returns {Promise<Array>} List of employees with invitation status
+ */
+export const getTeamWithStatus = async () => {
+  try {
+    const response = await api.get('/employees/team');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching team with status:', error);
+    throw error;
+  }
+};
+
+/**
+ * Resend invitation to employee (Admin only)
+ * @param {number} empId - Employee ID
+ * @returns {Promise<Object>} Success message
+ */
+export const resendInvitation = async (empId) => {
+  try {
+    const response = await api.post(`/employees/${empId}/resend-invite`);
+    return response.data;
+  } catch (error) {
+    console.error('Error resending invitation:', error);
+    throw error;
+  }
+};
+
+/**
+ * Toggle employee status - enable/disable (Admin only)
+ * @param {number} empId - Employee ID
+ * @param {string} status - 'ACTIVE' or 'DISABLED'
+ * @returns {Promise<Object>} Success message
+ */
+export const toggleEmployeeStatus = async (empId, status) => {
+  try {
+    const response = await api.patch(`/employees/${empId}/status`, { status });
+    return response.data;
+  } catch (error) {
+    console.error('Error toggling employee status:', error);
     throw error;
   }
 };
@@ -132,6 +180,9 @@ export default {
   getEmployeeContacts,
   getTeamPerformance,
   addEmployee,
+  getTeamWithStatus,
+  resendInvitation,
+  toggleEmployeeStatus,
   removeEmployee,
   updateEmployeeRole
 };

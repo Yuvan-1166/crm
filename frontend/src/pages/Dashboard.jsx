@@ -328,6 +328,7 @@ const Dashboard = () => {
           />
           <ContactDetail
             contact={selectedContact}
+            onEmailClick={handleEmailClick}
             onClose={() => setSelectedContact(null)}
             onUpdate={handleUpdateContact}
           />

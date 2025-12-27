@@ -4,8 +4,23 @@ import fs from 'fs';
 
 dotenv.config();
 
-const sql = fs.readFileSync('/home/yuvan/Programs/Development/crm/backend/db/migrations/add_oauth_tokens.sql', 'utf8');
-const pool = mysql.createPool(process.env.DATABASE_URL);
+const sql = fs.readFileSync('/home/yuvan/Programs/Development/crm/backend/db/migrations/add_invitation_fields.sql', 'utf8');
+const DATABASE_URL = process.env.DATABASE_URL || '';
+
+if (!DATABASE_URL) {
+  console.error("❌ DATABASE_URL is not defined");
+  process.exit(1);
+}
+
+// Create connection pool using URI
+const pool = mysql.createPool(DATABASE_URL, {
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  ssl: {
+    rejectUnauthorized: true, // required for Aiven
+  },
+});
 
 // Split and execute
 const statements = sql.split(';').filter(s => s.trim());

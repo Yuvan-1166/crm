@@ -1,5 +1,7 @@
 import * as employeeService from "./employee.service.js";
+import * as employeeRepo from "./employee.repo.js";
 import * as companyRepo from "../companies/company.repo.js";
+import { sendInvitationEmail } from "../../utils/emailService.js";
 import jwt from "jsonwebtoken";
 
 /**
@@ -76,31 +78,153 @@ export const completeProfile = async (req, res, next) => {
 };
 
 /**
- * @desc   Create a new employee
+ * @desc   Create a new employee (invite)
  * @route  POST /employees
  * @access Admin
  */
 export const createEmployee = async (req, res, next) => {
   try {
     const companyId = req.user.companyId;
+    const adminId = req.user.empId;
+    const { sendInvite = true } = req.body;
     
-    // Add the admin's company_id to the new employee data
+    // Add the admin's company_id and invitation info
     const employeeData = {
       ...req.body,
-      company_id: companyId
+      company_id: companyId,
+      invitation_status: 'INVITED',
+      invited_by: adminId
     };
 
-    const empId = await employeeService.createEmployee(employeeData);
+    const { insertId: empId, invitationToken } = await employeeService.createEmployee(employeeData);
+
+    // Send invitation email if requested
+    if (sendInvite && invitationToken) {
+      try {
+        // Get admin info and company name
+        const admin = await employeeService.getEmployeeById(adminId);
+        const company = await companyRepo.getById(companyId);
+        
+        await sendInvitationEmail({
+          to: employeeData.email,
+          employeeName: employeeData.name,
+          adminName: admin?.name || 'Admin',
+          companyName: company?.company_name || 'CRM Platform',
+          inviteToken: invitationToken
+        });
+      } catch (emailError) {
+        console.error('Failed to send invitation email:', emailError);
+        // Don't fail the request, employee is created
+      }
+    }
 
     res.status(201).json({
-      message: "Employee created successfully",
+      message: sendInvite ? "Employee created and invitation sent" : "Employee created successfully",
       empId,
+      invitationSent: sendInvite
     });
   } catch (error) {
     // Handle duplicate email error
     if (error.message.includes('already exists')) {
       return res.status(400).json({ message: error.message });
     }
+    next(error);
+  }
+};
+
+/**
+ * @desc   Resend invitation to employee
+ * @route  POST /employees/:id/resend-invite
+ * @access Admin
+ */
+export const resendInvitation = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.user.empId;
+    const companyId = req.user.companyId;
+    
+    // Get the employee
+    const employee = await employeeService.getEmployeeById(id);
+    
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+    
+    // Check if employee belongs to same company
+    if (employee.company_id !== companyId) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+    
+    if (employee.invitation_status === 'ACTIVE') {
+      return res.status(400).json({ message: "Employee has already accepted the invitation" });
+    }
+    
+    // Generate new token
+    const newToken = await employeeRepo.resendInvitation(id);
+    
+    // Send email
+    const admin = await employeeService.getEmployeeById(adminId);
+    const company = await companyRepo.getById(companyId);
+    
+    await sendInvitationEmail({
+      to: employee.email,
+      employeeName: employee.name,
+      adminName: admin?.name || 'Admin',
+      companyName: company?.company_name || 'CRM Platform',
+      inviteToken: newToken
+    });
+    
+    res.json({ message: "Invitation resent successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc   Get all employees with invitation status (Admin)
+ * @route  GET /employees/team
+ * @access Admin
+ */
+export const getTeamWithStatus = async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const employees = await employeeRepo.getByCompanyWithStatus(companyId);
+    
+    res.json(employees);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc   Toggle employee status (enable/disable)
+ * @route  PATCH /employees/:id/status
+ * @access Admin
+ */
+export const toggleEmployeeStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // 'ACTIVE' or 'DISABLED'
+    const companyId = req.user.companyId;
+    
+    if (!['ACTIVE', 'DISABLED'].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+    
+    const employee = await employeeService.getEmployeeById(id);
+    
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+    
+    if (employee.company_id !== companyId) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+    
+    await employeeRepo.updateInvitationStatus(id, status);
+    
+    res.json({ message: `Employee ${status === 'ACTIVE' ? 'enabled' : 'disabled'} successfully` });
+  } catch (error) {
     next(error);
   }
 };

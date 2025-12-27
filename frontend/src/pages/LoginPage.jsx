@@ -1,28 +1,57 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { googleLogin } from '../services/authService';
+import { Mail, UserPlus, AlertCircle, CheckCircle, ArrowRight } from 'lucide-react';
 
 const LoginPage = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { login } = useAuth();
+
+  // Get invite token from URL if present
+  const inviteToken = searchParams.get('invite');
+  const [isInvite, setIsInvite] = useState(!!inviteToken);
+
+  useEffect(() => {
+    if (inviteToken) {
+      setIsInvite(true);
+    }
+  }, [inviteToken]);
 
   const handleGoogleSuccess = async (credentialResponse) => {
     setLoading(true);
     setError('');
 
     try {
-      const data = await googleLogin(credentialResponse.credential);
+      // Pass invite token if present
+      const data = await googleLogin(credentialResponse.credential, inviteToken);
       login(data.user, data.token);
       
       // Navigation will be handled by the route protection logic in App.jsx
       // If user needs onboarding, they'll be redirected to /onboarding
       // If profile is complete, they'll go to /dashboard
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Please try again.');
+      const errorCode = err.response?.data?.code;
+      const errorMessage = err.response?.data?.message;
+      
+      // Handle specific error codes with friendly messages
+      if (errorCode === 'NOT_INVITED') {
+        setError('You haven\'t been invited to this platform yet. Please ask your administrator for an invitation.');
+      } else if (errorCode === 'EMAIL_MISMATCH') {
+        setError(errorMessage);
+      } else if (errorCode === 'INVALID_INVITE') {
+        setError('This invitation link is invalid or has expired. Please ask your administrator for a new invitation.');
+      } else if (errorCode === 'PENDING_INVITATION') {
+        setError('Please use the invitation link sent to your email to complete your registration.');
+      } else if (errorCode === 'ACCOUNT_DISABLED') {
+        setError('Your account has been disabled. Please contact your administrator.');
+      } else {
+        setError(errorMessage || 'Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -59,14 +88,48 @@ const LoginPage = () => {
               />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">Welcome Back</h1>
-          <p className="text-gray-500">Sign in to your CRM account</p>
+          
+          {isInvite ? (
+            <>
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium mb-3">
+                <CheckCircle className="w-4 h-4" />
+                You've been invited!
+              </div>
+              <h1 className="text-3xl font-bold text-gray-800 mb-2">Accept Invitation</h1>
+              <p className="text-gray-500">Sign in with your Google account to join the team</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-3xl font-bold text-gray-800 mb-2">Welcome Back</h1>
+              <p className="text-gray-500">Sign in to your CRM account</p>
+            </>
+          )}
         </div>
+
+        {/* Invitation Info Banner */}
+        {isInvite && !error && (
+          <div className="mb-6 p-4 bg-sky-50 border border-sky-200 rounded-xl">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-sky-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <UserPlus className="w-5 h-5 text-sky-600" />
+              </div>
+              <div>
+                <p className="text-sm text-sky-800 font-medium">Complete your registration</p>
+                <p className="text-xs text-sky-600 mt-1">
+                  Click the button below to sign in with Google and join your team.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Error Message */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-600 text-sm text-center">{error}</p>
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-red-700 text-sm">{error}</p>
+            </div>
           </div>
         )}
 
@@ -75,17 +138,19 @@ const LoginPage = () => {
           {loading ? (
             <div className="flex items-center justify-center py-3">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
-              <span className="ml-3 text-gray-600">Signing in...</span>
+              <span className="ml-3 text-gray-600">
+                {isInvite ? 'Setting up your account...' : 'Signing in...'}
+              </span>
             </div>
           ) : (
             <div className="w-full flex justify-center">
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={handleGoogleError}
-                useOneTap
+                useOneTap={!isInvite}
                 theme="outline"
                 size="large"
-                text="signin_with"
+                text={isInvite ? "continue_with" : "signin_with"}
                 shape="rectangular"
                 logo_alignment="left"
               />
@@ -99,6 +164,22 @@ const LoginPage = () => {
           <span className="px-4 text-sm text-gray-400">Secure login</span>
           <div className="flex-1 border-t border-gray-200"></div>
         </div>
+
+        {/* Access Note for non-invited users */}
+        {!isInvite && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+            <div className="flex items-start gap-3">
+              <Mail className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm text-amber-800 font-medium">Invitation Required</p>
+                <p className="text-xs text-amber-700 mt-1">
+                  Only invited team members can access this platform. 
+                  Contact your administrator if you need access.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Info Text */}
         <p className="text-center text-sm text-gray-500">

@@ -50,6 +50,51 @@ router.post(
 );
 
 /* ---------------------------------------------------
+   GET TEAM WITH STATUS (ADMIN)
+--------------------------------------------------- */
+/**
+ * @route   GET /employees/team
+ * @desc    Get all team members with invitation status
+ * @access  Admin
+ */
+router.get(
+  "/team",
+  authenticateEmployee,
+  authorizeRoles(USER_ROLES.ADMIN),
+  employeeController.getTeamWithStatus
+);
+
+/* ---------------------------------------------------
+   RESEND INVITATION (ADMIN)
+--------------------------------------------------- */
+/**
+ * @route   POST /employees/:id/resend-invite
+ * @desc    Resend invitation email to employee
+ * @access  Admin
+ */
+router.post(
+  "/:id/resend-invite",
+  authenticateEmployee,
+  authorizeRoles(USER_ROLES.ADMIN),
+  employeeController.resendInvitation
+);
+
+/* ---------------------------------------------------
+   TOGGLE EMPLOYEE STATUS (ADMIN)
+--------------------------------------------------- */
+/**
+ * @route   PATCH /employees/:id/status
+ * @desc    Enable or disable an employee
+ * @access  Admin
+ */
+router.patch(
+  "/:id/status",
+  authenticateEmployee,
+  authorizeRoles(USER_ROLES.ADMIN),
+  employeeController.toggleEmployeeStatus
+);
+
+/* ---------------------------------------------------
    GET EMPLOYEE BY ID
 --------------------------------------------------- */
 /**

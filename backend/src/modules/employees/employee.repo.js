@@ -1,9 +1,19 @@
 import { db } from "../../config/db.js";
+import crypto from "crypto";
 
 /* ---------------------------------------------------
-   CREATE EMPLOYEE
+   GENERATE INVITATION TOKEN
+--------------------------------------------------- */
+export const generateInvitationToken = () => {
+  return crypto.randomBytes(32).toString('hex');
+};
+
+/* ---------------------------------------------------
+   CREATE EMPLOYEE (with invitation support)
 --------------------------------------------------- */
 export const createEmployee = async (data) => {
+  const invitationToken = data.invitation_status === 'INVITED' ? generateInvitationToken() : null;
+  
   const [result] = await db.query(
     `
     INSERT INTO employees (
@@ -12,9 +22,13 @@ export const createEmployee = async (data) => {
       email,
       phone,
       role,
-      department
+      department,
+      invitation_status,
+      invitation_token,
+      invitation_sent_at,
+      invited_by
     )
-    VALUES (?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       data.company_id || null,
@@ -23,10 +37,14 @@ export const createEmployee = async (data) => {
       data.phone || null,
       data.role || "EMPLOYEE",
       data.department || null,
+      data.invitation_status || "ACTIVE",
+      invitationToken,
+      data.invitation_status === 'INVITED' ? new Date() : null,
+      data.invited_by || null,
     ]
   );
 
-  return result.insertId;
+  return { insertId: result.insertId, invitationToken };
 };
 
 /* ---------------------------------------------------
@@ -106,6 +124,86 @@ export const updateEmployee = async (empId, updates) => {
     `UPDATE employees SET ${fields.join(", ")} WHERE emp_id = ?`,
     values
   );
+};
+
+/* ---------------------------------------------------
+   UPDATE INVITATION STATUS
+--------------------------------------------------- */
+export const updateInvitationStatus = async (empId, status) => {
+  await db.query(
+    `UPDATE employees SET invitation_status = ? WHERE emp_id = ?`,
+    [status, empId]
+  );
+};
+
+/* ---------------------------------------------------
+   GET EMPLOYEE BY INVITATION TOKEN
+--------------------------------------------------- */
+export const getByInvitationToken = async (token) => {
+  const [rows] = await db.query(
+    `SELECT * FROM employees WHERE invitation_token = ?`,
+    [token]
+  );
+  return rows[0];
+};
+
+/* ---------------------------------------------------
+   ACCEPT INVITATION (activate employee)
+--------------------------------------------------- */
+export const acceptInvitation = async (empId) => {
+  await db.query(
+    `UPDATE employees 
+     SET invitation_status = 'ACTIVE', 
+         invitation_token = NULL,
+         last_login_at = NOW()
+     WHERE emp_id = ?`,
+    [empId]
+  );
+};
+
+/* ---------------------------------------------------
+   UPDATE LAST LOGIN
+--------------------------------------------------- */
+export const updateLastLogin = async (empId) => {
+  await db.query(
+    `UPDATE employees SET last_login_at = NOW() WHERE emp_id = ?`,
+    [empId]
+  );
+};
+
+/* ---------------------------------------------------
+   RESEND INVITATION (generate new token)
+--------------------------------------------------- */
+export const resendInvitation = async (empId) => {
+  const newToken = generateInvitationToken();
+  await db.query(
+    `UPDATE employees 
+     SET invitation_token = ?, 
+         invitation_sent_at = NOW(),
+         invitation_status = 'INVITED'
+     WHERE emp_id = ?`,
+    [newToken, empId]
+  );
+  return newToken;
+};
+
+/* ---------------------------------------------------
+   GET EMPLOYEES BY COMPANY (with invitation info)
+--------------------------------------------------- */
+export const getByCompanyWithStatus = async (companyId) => {
+  const [rows] = await db.query(
+    `
+    SELECT 
+      emp_id, company_id, name, email, phone, role, department,
+      invitation_status, invitation_sent_at, invited_by, last_login_at,
+      created_at, updated_at
+    FROM employees 
+    WHERE company_id = ?
+    ORDER BY created_at DESC
+    `,
+    [companyId]
+  );
+  return rows;
 };
 
 /* ---------------------------------------------------
