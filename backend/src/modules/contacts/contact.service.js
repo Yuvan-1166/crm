@@ -87,6 +87,13 @@ export const getContactsByStatus = async (companyId, status, limit = 50, offset 
 };
 
 /* ---------------------------------------------------
+   GET ALL CONTACTS WITH EMPLOYEE INFO (ADMIN)
+--------------------------------------------------- */
+export const getAllContactsWithEmployeeInfo = async (companyId, filters = {}) => {
+  return await contactRepo.getAllWithEmployeeInfo(companyId, filters);
+};
+
+/* ---------------------------------------------------
    SYSTEM: LEAD → MQL (Marketing Automation)
 --------------------------------------------------- */
 export const processLeadActivity = async ({ contactId, token }) => {
