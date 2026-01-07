@@ -15,7 +15,7 @@ const ContactGrid = ({
   const [activeTemperature, setActiveTemperature] = useState('COLD');
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState('grid');
+  const [viewMode, setViewMode] = useState('table');
 
   // Filter contacts by temperature and search
   useEffect(() => {
