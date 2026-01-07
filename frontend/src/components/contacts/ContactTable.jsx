@@ -9,7 +9,6 @@ const ContactTable = ({ contacts = [], onContactSelect, onEmailClick, onFollowup
     { key: 'name', label: 'Name', sortable: true },
     { key: 'email', label: 'Email', sortable: true },
     { key: 'phone', label: 'Phone', sortable: true },
-    { key: 'company_name', label: 'Company', sortable: true },
     { key: 'temperature', label: 'Temperature', sortable: true },
     { key: 'average_rating', label: 'Rating', sortable: true },
     { key: 'created_at', label: 'Created', sortable: true },
@@ -196,14 +195,7 @@ const ContactTable = ({ contacts = [], onContactSelect, onEmailClick, onFollowup
                     {contact.phone || '—'}
                   </span>
                 </td>
-
-                {/* Company */}
-                <td className="px-4 py-3">
-                  <span className="text-gray-600 text-sm truncate max-w-[150px] block">
-                    {contact.company_name || '—'}
-                  </span>
-                </td>
-
+                
                 {/* Temperature */}
                 <td className="px-4 py-3">
                   <span
