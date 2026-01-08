@@ -175,3 +175,24 @@ export const getAverageRating = async (contactId, stage) => {
 export const getOverallAverageRating = async (contactId) => {
   return await sessionRepo.getOverallAverageRating(contactId);
 };
+
+/* ---------------------------------------------------
+   GET ALL SESSIONS BY STAGE (COMPANY-WIDE)
+--------------------------------------------------- */
+export const getAllSessionsByStage = async (companyId, stage, limit = 100, offset = 0) => {
+  // Validate stage
+  const validStages = ['LEAD', 'MQL', 'SQL', 'OPPORTUNITY', 'CUSTOMER', 'EVANGELIST'];
+  if (!validStages.includes(stage?.toUpperCase())) {
+    throw new Error('Invalid stage');
+  }
+  
+  const sessions = await sessionRepo.getAllByStage(companyId, stage.toUpperCase(), limit, offset);
+  const total = await sessionRepo.countAllByStage(companyId, stage.toUpperCase());
+  
+  return {
+    sessions,
+    total,
+    limit,
+    offset
+  };
+};
