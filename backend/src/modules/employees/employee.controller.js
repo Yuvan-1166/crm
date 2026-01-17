@@ -110,7 +110,8 @@ export const createEmployee = async (req, res, next) => {
           employeeName: employeeData.name,
           adminName: admin?.name || 'Admin',
           companyName: company?.company_name || 'CRM Platform',
-          inviteToken: invitationToken
+          inviteToken: invitationToken,
+          adminEmpId: adminId // Use admin's Gmail OAuth
         });
       } catch (emailError) {
         console.error('Failed to send invitation email:', emailError);
@@ -171,7 +172,8 @@ export const resendInvitation = async (req, res, next) => {
       employeeName: employee.name,
       adminName: admin?.name || 'Admin',
       companyName: company?.company_name || 'CRM Platform',
-      inviteToken: newToken
+      inviteToken: newToken,
+      adminEmpId: adminId // Use admin's Gmail OAuth
     });
     
     res.json({ message: "Invitation resent successfully" });
