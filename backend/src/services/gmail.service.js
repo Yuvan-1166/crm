@@ -80,6 +80,20 @@ const parseFullMessage = (message) => {
 };
 
 /* ---------------------------------------------------
+   HELPER: Encode subject for email headers (RFC 2047)
+   Properly encodes UTF-8 characters including emojis
+--------------------------------------------------- */
+const encodeSubject = (subject) => {
+  // Check if subject contains non-ASCII characters
+  if (!/^[\x00-\x7F]*$/.test(subject)) {
+    // Use Base64 encoding for UTF-8 (RFC 2047)
+    const encoded = Buffer.from(subject, 'utf-8').toString('base64');
+    return `=?UTF-8?B?${encoded}?=`;
+  }
+  return subject;
+};
+
+/* ---------------------------------------------------
    HELPER: Build raw RFC 2822 message
    Adds X-CRM-Sent header to identify emails sent from CRM
    Supports attachments using MIME multipart/mixed format
@@ -89,10 +103,13 @@ const buildRawMessage = ({ from, to, subject, htmlBody, textBody, cc, bcc, attac
   const mixedBoundary = "mixed_boundary_" + Date.now();
   const altBoundary = "alt_boundary_" + Date.now();
 
+  // Encode subject to handle emojis and special characters
+  const encodedSubject = encodeSubject(subject);
+
   const messageParts = [
     `From: ${from}`,
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodedSubject}`,
     "X-CRM-Sent: true",
     `X-CRM-Timestamp: ${new Date().toISOString()}`,
     "MIME-Version: 1.0",

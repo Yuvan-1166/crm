@@ -29,6 +29,9 @@ export const initializeEmailTransport = () => {
       user: emailUser,
       pass: emailPass,
     },
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
+    socketTimeout: 20000,
   });
 
   // Verify connection

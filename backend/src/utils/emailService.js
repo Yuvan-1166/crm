@@ -1,6 +1,9 @@
 import nodemailer from 'nodemailer';
+import * as gmailService from '../services/gmail.service.js';
+import * as googleOAuth from '../services/googleOAuth.service.js';
+import * as emailQueue from '../services/emailQueue.service.js';
 
-// Create reusable transporter
+// Create reusable transporter (fallback for SMTP)
 const createTransporter = () => {
   return nodemailer.createTransport({
     service: 'gmail',
@@ -12,28 +15,10 @@ const createTransporter = () => {
 };
 
 /**
- * Send invitation email to new employee
- * @param {Object} options - Email options
- * @param {string} options.to - Recipient email
- * @param {string} options.employeeName - Name of the invited employee
- * @param {string} options.adminName - Name of the admin who sent the invite
- * @param {string} options.companyName - Name of the company
- * @param {string} options.inviteToken - Unique invitation token
+ * Generate invitation email HTML template
  */
-export const sendInvitationEmail = async ({ to, employeeName, adminName, companyName, inviteToken }) => {
-  const transporter = createTransporter();
-  
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  const inviteLink = `${frontendUrl}/login?invite=${inviteToken}`;
-  
-  const mailOptions = {
-    from: {
-      name: companyName || 'CRM Platform',
-      address: process.env.SMTP_EMAIL,
-    },
-    to,
-    subject: `🎉 You're invited to join ${companyName || 'our CRM'} team!`,
-    html: `
+const generateInvitationEmailHtml = ({ employeeName, adminName, companyName, inviteLink }) => {
+  return `
       <!DOCTYPE html>
       <html>
       <head>
@@ -110,8 +95,14 @@ export const sendInvitationEmail = async ({ to, employeeName, adminName, company
         </table>
       </body>
       </html>
-    `,
-    text: `
+    `;
+};
+
+/**
+ * Generate invitation email plain text
+ */
+const generateInvitationEmailText = ({ employeeName, adminName, companyName, inviteLink }) => {
+  return `
 Hi ${employeeName},
 
 ${adminName} has invited you to join ${companyName || 'the CRM platform'}.
@@ -123,17 +114,71 @@ This invitation link will expire in 7 days.
 
 Best regards,
 ${companyName || 'CRM Platform'} Team
-    `,
-  };
+    `;
+};
 
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Invitation email sent:', info.messageId);
-    return { success: true, messageId: info.messageId };
-  } catch (error) {
-    console.error('Error sending invitation email:', error);
-    throw error;
+/**
+ * Send invitation email to new employee
+ * Uses admin's Gmail OAuth if available, otherwise falls back to SMTP
+ * @param {Object} options - Email options
+ * @param {string} options.to - Recipient email
+ * @param {string} options.employeeName - Name of the invited employee
+ * @param {string} options.adminName - Name of the admin who sent the invite
+ * @param {string} options.companyName - Name of the company
+ * @param {string} options.inviteToken - Unique invitation token
+ * @param {number} [options.adminEmpId] - Admin's employee ID for Gmail OAuth
+ */
+export const sendInvitationEmail = async ({ to, employeeName, adminName, companyName, inviteToken, adminEmpId }) => {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const inviteLink = `${frontendUrl}/login?invite=${inviteToken}`;
+  
+  const subject = `🎉 You're invited to join ${companyName || 'our CRM'} team!`;
+  const htmlBody = generateInvitationEmailHtml({ employeeName, adminName, companyName, inviteLink });
+  const textBody = generateInvitationEmailText({ employeeName, adminName, companyName, inviteLink });
+
+  // Try Gmail OAuth first if admin ID is provided
+  if (adminEmpId) {
+    try {
+      const isConnected = await googleOAuth.isEmailConnected(adminEmpId);
+      if (isConnected) {
+        // Queue via Gmail OAuth (non-blocking)
+        const jobId = emailQueue.queueEmail({
+          empId: adminEmpId,
+          to,
+          subject,
+          htmlBody,
+          textBody,
+          priority: 'high', // Invitations are high priority
+          sendMethod: 'gmail',
+        });
+        console.log(`📬 Invitation email queued via Gmail OAuth to ${to} (Job: ${jobId})`);
+        return { success: true, jobId, method: 'gmail-oauth', queued: true };
+      } else {
+        console.log('Admin Gmail not connected, falling back to SMTP');
+      }
+    } catch (oauthError) {
+      console.error('Gmail OAuth check failed, falling back to SMTP:', oauthError.message);
+    }
   }
+
+  // Fallback to SMTP (also queued for non-blocking)
+  const jobId = emailQueue.queueEmail({
+    to,
+    subject,
+    htmlBody,
+    textBody,
+    priority: 'high',
+    sendMethod: 'smtp',
+    smtpConfig: {
+      from: {
+        name: companyName || 'CRM Platform',
+        address: process.env.SMTP_EMAIL,
+      },
+    },
+  });
+  
+  console.log(`📬 Invitation email queued via SMTP to ${to} (Job: ${jobId})`);
+  return { success: true, jobId, method: 'smtp', queued: true };
 };
 
 /**

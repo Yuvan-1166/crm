@@ -12,6 +12,7 @@
 
 import * as gmailService from "./gmail.service.js";
 import * as emailRepo from "../modules/emails/email.repo.js";
+import { sendMail } from "../config/email.js";
 
 // Queue configuration
 const CONFIG = {
@@ -54,10 +55,13 @@ export const queueEmail = ({
   to,
   subject,
   htmlBody,
+  textBody,
   cc,
   bcc,
   attachments = [],
   priority = 'normal', // 'high', 'normal', 'low'
+  sendMethod = 'gmail', // 'gmail' or 'smtp'
+  smtpConfig = null, // For SMTP: { from: { name, address } }
 }) => {
   const jobId = generateJobId();
   
@@ -68,10 +72,13 @@ export const queueEmail = ({
     to,
     subject,
     htmlBody,
+    textBody,
     cc,
     bcc,
     attachments,
     priority,
+    sendMethod,
+    smtpConfig,
     status: JOB_STATUS.PENDING,
     attempts: 0,
     createdAt: Date.now(),
@@ -164,16 +171,30 @@ const processJob = async (job) => {
       setTimeout(() => reject(new Error('Email send timeout')), CONFIG.JOB_TIMEOUT);
     });
 
-    // Send email with timeout
-    const sendPromise = gmailService.sendEmailViaGmail({
-      empId: job.empId,
-      to: job.to,
-      subject: job.subject,
-      htmlBody: job.htmlBody,
-      cc: job.cc,
-      bcc: job.bcc,
-      attachments: job.attachments,
-    });
+    // Send email with timeout based on method
+    let sendPromise;
+    
+    if (job.sendMethod === 'smtp') {
+      // SMTP sending
+      sendPromise = sendMail({
+        to: job.to,
+        subject: job.subject,
+        html: job.htmlBody,
+        text: job.textBody,
+        from: job.smtpConfig?.from,
+      }).then(info => ({ messageId: info.messageId }));
+    } else {
+      // Gmail OAuth sending
+      sendPromise = gmailService.sendEmailViaGmail({
+        empId: job.empId,
+        to: job.to,
+        subject: job.subject,
+        htmlBody: job.htmlBody,
+        cc: job.cc,
+        bcc: job.bcc,
+        attachments: job.attachments,
+      });
+    }
 
     const result = await Promise.race([sendPromise, timeoutPromise]);
 
