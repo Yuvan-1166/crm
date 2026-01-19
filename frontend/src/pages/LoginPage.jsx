@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { googleLogin } from '../services/authService';
+import { wakeUp } from '../services/healthService';
 import {
   AdminRegisterView,
   InviteView,
@@ -23,6 +24,11 @@ const LoginPage = () => {
 
   // Get invite token from URL if present
   const inviteToken = searchParams.get('invite');
+
+  // Wake up backend/DB on login page load (entry point)
+  useEffect(() => {
+    wakeUp();
+  }, []);
 
   useEffect(() => {
     if (inviteToken) {
