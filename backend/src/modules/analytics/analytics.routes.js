@@ -1,5 +1,6 @@
 import { Router } from "express";
 import * as analyticsController from "./analytics.controller.js";
+import * as insightsController from "./insights.controller.js";
 import { authenticateEmployee } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../../middlewares/role.middleware.js";
 import { USER_ROLES } from "../../utils/constants.js";
@@ -178,6 +179,104 @@ router.get(
   "/products/:productName",
   authenticateEmployee,
   analyticsController.getProductDetails
+);
+
+/* ---------------------------------------------------
+   INSIGHTS: COMPREHENSIVE
+--------------------------------------------------- */
+/**
+ * @route   GET /analytics/insights
+ * @desc    Get comprehensive business insights with filters
+ * @access  Employee
+ */
+router.get(
+  "/insights",
+  authenticateEmployee,
+  insightsController.getInsights
+);
+
+/* ---------------------------------------------------
+   INSIGHTS: FILTER OPTIONS
+--------------------------------------------------- */
+/**
+ * @route   GET /analytics/insights/filters
+ * @desc    Get available filter options (sources, employees, etc.)
+ * @access  Employee
+ */
+router.get(
+  "/insights/filters",
+  authenticateEmployee,
+  insightsController.getFilterOptions
+);
+
+/* ---------------------------------------------------
+   INSIGHTS: BUSINESS PERFORMANCE
+--------------------------------------------------- */
+/**
+ * @route   GET /analytics/insights/performance
+ * @desc    Get business performance metrics with period comparison
+ * @access  Employee
+ */
+router.get(
+  "/insights/performance",
+  authenticateEmployee,
+  insightsController.getPerformance
+);
+
+/* ---------------------------------------------------
+   INSIGHTS: TOP CUSTOMERS
+--------------------------------------------------- */
+/**
+ * @route   GET /analytics/insights/customers
+ * @desc    Get top customers analysis and segments
+ * @access  Employee
+ */
+router.get(
+  "/insights/customers",
+  authenticateEmployee,
+  insightsController.getTopCustomers
+);
+
+/* ---------------------------------------------------
+   INSIGHTS: DEAL BOTTLENECKS
+--------------------------------------------------- */
+/**
+ * @route   GET /analytics/insights/bottlenecks
+ * @desc    Get deal pipeline bottleneck analysis
+ * @access  Employee
+ */
+router.get(
+  "/insights/bottlenecks",
+  authenticateEmployee,
+  insightsController.getBottlenecks
+);
+
+/* ---------------------------------------------------
+   INSIGHTS: RECOMMENDATIONS
+--------------------------------------------------- */
+/**
+ * @route   GET /analytics/insights/recommendations
+ * @desc    Get actionable recommendations for the team
+ * @access  Employee
+ */
+router.get(
+  "/insights/recommendations",
+  authenticateEmployee,
+  insightsController.getRecommendations
+);
+
+/* ---------------------------------------------------
+   INSIGHTS: TRENDS
+--------------------------------------------------- */
+/**
+ * @route   GET /analytics/insights/trends
+ * @desc    Get trend data for charts (daily/weekly/monthly)
+ * @access  Employee
+ */
+router.get(
+  "/insights/trends",
+  authenticateEmployee,
+  insightsController.getTrends
 );
 
 export default router;
