@@ -102,6 +102,9 @@ app.get("/", (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+app.use("/api/render", (_, res) => {
+  res.sendStatus(200);
+});
 
 // Database health check
 app.use("/api", healthRouter);

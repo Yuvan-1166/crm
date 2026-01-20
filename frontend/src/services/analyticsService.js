@@ -46,6 +46,78 @@ export const getProductDetails = async (productName) => {
   return response.data;
 };
 
+/* ---------------------------------------------------
+   INSIGHTS API FUNCTIONS
+--------------------------------------------------- */
+
+// Build query string from filters object
+const buildInsightsQuery = (filters = {}) => {
+  const params = new URLSearchParams();
+  
+  if (filters.datePreset) {
+    params.append('datePreset', filters.datePreset);
+  } else if (filters.startDate || filters.endDate) {
+    if (filters.startDate) params.append('startDate', filters.startDate);
+    if (filters.endDate) params.append('endDate', filters.endDate);
+  }
+  
+  if (filters.source) params.append('source', filters.source);
+  if (filters.assignedTo) params.append('assignedTo', filters.assignedTo);
+  if (filters.limit) params.append('limit', filters.limit);
+  if (filters.sortBy) params.append('sortBy', filters.sortBy);
+  if (filters.period) params.append('period', filters.period);
+  
+  const queryString = params.toString();
+  return queryString ? `?${queryString}` : '';
+};
+
+// Get comprehensive insights with filters
+export const getInsights = async (filters = {}) => {
+  const query = buildInsightsQuery(filters);
+  const response = await api.get(`/analytics/insights${query}`);
+  return response.data;
+};
+
+// Get filter options (sources, employees, date presets)
+export const getInsightFilters = async () => {
+  const response = await api.get('/analytics/insights/filters');
+  return response.data;
+};
+
+// Get business performance metrics
+export const getInsightPerformance = async (filters = {}) => {
+  const query = buildInsightsQuery(filters);
+  const response = await api.get(`/analytics/insights/performance${query}`);
+  return response.data;
+};
+
+// Get top customers analysis
+export const getInsightCustomers = async (filters = {}) => {
+  const query = buildInsightsQuery(filters);
+  const response = await api.get(`/analytics/insights/customers${query}`);
+  return response.data;
+};
+
+// Get deal bottleneck analysis
+export const getInsightBottlenecks = async (filters = {}) => {
+  const query = buildInsightsQuery(filters);
+  const response = await api.get(`/analytics/insights/bottlenecks${query}`);
+  return response.data;
+};
+
+// Get actionable recommendations
+export const getInsightRecommendations = async () => {
+  const response = await api.get('/analytics/insights/recommendations');
+  return response.data;
+};
+
+// Get trends data for charts
+export const getInsightTrends = async (filters = {}) => {
+  const query = buildInsightsQuery(filters);
+  const response = await api.get(`/analytics/insights/trends${query}`);
+  return response.data;
+};
+
 export default {
   getComprehensiveAnalytics,
   getDashboard,
@@ -54,4 +126,12 @@ export default {
   getAdminAnalytics,
   getProductAnalytics,
   getProductDetails,
+  // Insights
+  getInsights,
+  getInsightFilters,
+  getInsightPerformance,
+  getInsightCustomers,
+  getInsightBottlenecks,
+  getInsightRecommendations,
+  getInsightTrends,
 };
