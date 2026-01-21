@@ -180,10 +180,12 @@ export const getByStatus = async (status, companyId) => {
     `
     SELECT 
       c.*,
+      e.name as assigned_emp_name,
       COALESCE(AVG(s.rating), 0) as average_rating,
       COUNT(DISTINCT s.session_id) as total_sessions,
       (SELECT s2.rating FROM sessions s2 WHERE s2.contact_id = c.contact_id ORDER BY s2.created_at DESC LIMIT 1) as latest_rating
     FROM contacts c
+    LEFT JOIN employees e ON c.assigned_emp_id = e.emp_id
     LEFT JOIN sessions s ON c.contact_id = s.contact_id
     WHERE c.status = ?
       AND c.company_id = ?
@@ -204,10 +206,12 @@ export const getAll = async (companyId, limit = 50, offset = 0) => {
     `
     SELECT 
       c.*,
+      e.name as assigned_emp_name,
       COALESCE(AVG(s.rating), 0) as average_rating,
       COUNT(DISTINCT s.session_id) as total_sessions,
       (SELECT s2.rating FROM sessions s2 WHERE s2.contact_id = c.contact_id ORDER BY s2.created_at DESC LIMIT 1) as latest_rating
     FROM contacts c
+    LEFT JOIN employees e ON c.assigned_emp_id = e.emp_id
     LEFT JOIN sessions s ON c.contact_id = s.contact_id
     WHERE c.company_id = ?
     GROUP BY c.contact_id
