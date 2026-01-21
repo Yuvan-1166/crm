@@ -5,6 +5,7 @@ import { CurrencyProvider } from './context/CurrencyContext';
 import { AdminProvider } from './context/AdminContext';
 import { EmailCacheProvider } from './context/EmailCacheContext';
 import { ContactsCacheProvider } from './context/ContactsCacheContext';
+import { SessionsCacheProvider } from './context/SessionsCacheContext';
 import { lazy, Suspense } from 'react';
 
 // Eagerly loaded pages (critical path)
@@ -132,6 +133,7 @@ function App() {
           <AdminProvider>
             <EmailCacheProvider>
               <ContactsCacheProvider>
+                <SessionsCacheProvider>
                 <BrowserRouter>
                   <Routes>
                   {/* Public Routes */}
@@ -164,6 +166,9 @@ function App() {
                 >
                   {/* Contact Stage Routes */}
                   <Route path="/contacts/:stage" element={<NestedSuspense><ContactsPage /></NestedSuspense>} />
+                  
+                  {/* Session/Followup Stage Routes */}
+                  <Route path="/sessions/:stage" element={<NestedSuspense><StageFollowupsPage /></NestedSuspense>} />
                   
                   {/* Workspace View Routes */}
                   <Route path="/analytics" element={<NestedSuspense><AnalyticsPage /></NestedSuspense>} />
@@ -200,23 +205,13 @@ function App() {
                   }
                 />
 
-                {/* Followups routes */}
+                {/* Followups for individual contact */}
                 <Route
                   path="/followups/:contactId"
                   element={
                     <AuthenticatedRoute>
                       <SuspenseWrapper>
                         <FollowupsPage />
-                      </SuspenseWrapper>
-                    </AuthenticatedRoute>
-                  }
-                />
-                <Route
-                  path="/:stage/followups"
-                  element={
-                    <AuthenticatedRoute>
-                      <SuspenseWrapper>
-                        <StageFollowupsPage />
                       </SuspenseWrapper>
                     </AuthenticatedRoute>
                   }
@@ -229,6 +224,7 @@ function App() {
                 <Route path="*" element={<Navigate to="/login" />} />
                 </Routes>
                 </BrowserRouter>
+                </SessionsCacheProvider>
               </ContactsCacheProvider>
             </EmailCacheProvider>
           </AdminProvider>
