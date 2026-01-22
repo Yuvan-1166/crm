@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, Star, MessageSquare, Sparkles } from 'lucide-react';
+import { Mail, Star, MessageSquare, Sparkles, User } from 'lucide-react';
 
 const ContactCard = ({ contact, onSelect, onEmailClick, onFollowupsClick }) => {
   const [imageError, setImageError] = useState(false);
@@ -148,6 +148,14 @@ const ContactCard = ({ contact, onSelect, onEmailClick, onFollowupsClick }) => {
                 );
               })()}
             </div>
+
+            {/* Assigned Employee */}
+            {contact.assigned_emp_name && (
+              <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+                <User className="w-3 h-3" />
+                <span className="truncate">{contact.assigned_emp_name}</span>
+              </div>
+            )}
           </div>
         </div>
 

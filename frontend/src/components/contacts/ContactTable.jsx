@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronUp, ChevronDown, Mail, Star, MessageSquare, Sparkles } from 'lucide-react';
+import { ChevronUp, ChevronDown, Mail, Star, MessageSquare, Sparkles, User } from 'lucide-react';
 
 const ContactTable = ({ contacts = [], onContactSelect, onEmailClick, onFollowupsClick }) => {
   const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
@@ -9,6 +9,7 @@ const ContactTable = ({ contacts = [], onContactSelect, onEmailClick, onFollowup
     { key: 'name', label: 'Name', sortable: true },
     { key: 'email', label: 'Email', sortable: true },
     { key: 'phone', label: 'Phone', sortable: true },
+    { key: 'assigned_emp_name', label: 'Assigned To', sortable: true },
     { key: 'latest_rating', label: 'Interest', sortable: true },
     { key: 'average_rating', label: 'Rating', sortable: true },
     { key: 'created_at', label: 'Created', sortable: true },
@@ -239,6 +240,22 @@ const ContactTable = ({ contacts = [], onContactSelect, onEmailClick, onFollowup
                   <span className="text-gray-600 text-sm">
                     {contact.phone || '—'}
                   </span>
+                </td>
+
+                {/* Assigned To */}
+                <td className="px-4 py-3">
+                  {contact.assigned_emp_name ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-400 to-indigo-600 flex items-center justify-center text-white font-medium text-xs flex-shrink-0">
+                        {contact.assigned_emp_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                      </div>
+                      <span className="text-gray-700 text-sm truncate max-w-[120px]">
+                        {contact.assigned_emp_name}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-gray-400 text-sm italic">Unassigned</span>
+                  )}
                 </td>
 
                 {/* Interest Level */}
