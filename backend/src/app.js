@@ -26,6 +26,7 @@ import feedbackRoutes from "./modules/feedback/feedback.routes.js";
 import emailRoutes from "./modules/emails/email.routes.js";
 import analyticsRoutes from "./modules/analytics/analytics.routes.js";
 import taskRoutes from "./modules/tasks/task.routes.js";
+import outreachRoutes from "./modules/outreach/outreach.routes.js";
 
 // Initialize Express app
 const app = express();
@@ -149,6 +150,9 @@ app.use("/api/analytics", analyticsRoutes);
 // Task/Calendar management routes
 app.use("/api/tasks", taskRoutes);
 
+// AI Outreach routes (RAG + Autopilot)
+app.use("/api/outreach", outreachRoutes);
+
 /* =====================================================
    404 HANDLER
 ===================================================== */
@@ -171,6 +175,7 @@ app.use(errorHandler);
 ===================================================== */
 
 import * as emailQueue from "./services/emailQueue.service.js";
+import { restoreAutopilotSessions } from "./modules/outreach/autopilot.service.js";
 
 /* =====================================================
    GRACEFUL SHUTDOWN
@@ -202,7 +207,7 @@ const gracefulShutdown = async (signal) => {
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 
-const server = app.listen(PORT, HOST, () => {
+const server = app.listen(PORT, HOST, async () => {
   console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
@@ -248,7 +253,20 @@ const server = app.listen(PORT, HOST, () => {
    • GET  /api/analytics/dashboard   - Dashboard stats
    • GET  /api/analytics/funnel      - Pipeline funnel
    • GET  /api/analytics/performance - Employee performance
+
+   • POST /api/outreach/documents    - Upload RAG document
+   • POST /api/outreach/generate     - Generate AI emails
+   • POST /api/outreach/send         - Send generated emails
+   • POST /api/outreach/autopilot/start  - Start auto-reply mode
+   • POST /api/outreach/autopilot/stop   - Stop auto-reply mode
   `);
+
+  // Restore any active autopilot sessions
+  try {
+    await restoreAutopilotSessions();
+  } catch (err) {
+    console.error("⚠️ Failed to restore autopilot sessions:", err.message);
+  }
 });
 
 // Handle shutdown signalsanagement.f.aivencloud.com:12247/defaultdb?ssl-mode=REQUIRED

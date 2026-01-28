@@ -22,6 +22,8 @@
   "license": "ISC",
   "description": "CRM Platform Backend - Lead to Evangelist Pipeline",
   "dependencies": {
+    "@langchain/core": "^1.1.17",
+    "@langchain/groq": "^1.0.3",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -31,8 +33,12 @@
     "googleapis": "^169.0.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "langchain": "^1.2.14",
+    "mammoth": "^1.11.0",
+    "multer": "^2.0.2",
     "mysql2": "^3.16.0",
-    "nodemailer": "^7.0.12"
+    "nodemailer": "^7.0.12",
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "esbuild": "^0.27.2",
