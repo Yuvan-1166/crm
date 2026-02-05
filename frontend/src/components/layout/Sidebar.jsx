@@ -150,15 +150,18 @@ StageButton.displayName = 'StageButton';
 /**
  * Primary view button component (Contacts / Sessions toggle)
  */
-const PrimaryViewButton = memo(({ item, isActive, collapsed, onClick }) => {
+const PrimaryViewButton = memo(({ item, isActive, collapsed, onClick, isAdmin }) => {
   const Icon = item.icon;
+  const activeClass = isAdmin 
+    ? 'bg-amber-100 text-amber-700 font-semibold' 
+    : 'bg-sky-100 text-sky-700 font-semibold';
   
   return (
     <button
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
         isActive
-          ? 'bg-sky-100 text-sky-700 font-semibold'
+          ? activeClass
           : 'text-gray-600 hover:bg-gray-50'
       } ${collapsed ? 'justify-center px-2' : ''}`}
       title={collapsed ? item.label : undefined}
@@ -174,15 +177,18 @@ PrimaryViewButton.displayName = 'PrimaryViewButton';
 /**
  * Workspace navigation button component
  */
-const WorkspaceButton = memo(({ item, isActive, collapsed, onClick }) => {
+const WorkspaceButton = memo(({ item, isActive, collapsed, onClick, isAdmin }) => {
   const Icon = item.icon;
+  const activeClass = isAdmin 
+    ? 'bg-amber-100 text-amber-700' 
+    : 'bg-sky-100 text-sky-700';
   
   return (
     <button
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
         isActive
-          ? 'bg-sky-100 text-sky-700'
+          ? activeClass
           : 'text-gray-600 hover:bg-gray-50'
       } ${collapsed ? 'justify-center px-2' : ''}`}
       title={collapsed ? item.label : undefined}
@@ -405,6 +411,7 @@ const Sidebar = memo(({ activeStage, onStageChange, collapsed, onToggle, isAdmin
                     isActive={currentAdminView === item.id}
                     collapsed={collapsed}
                     onClick={() => handleWorkspaceClick(item)}
+                    isAdmin={showAdminSection}
                   />
                 ))}
               </nav>
@@ -418,6 +425,7 @@ const Sidebar = memo(({ activeStage, onStageChange, collapsed, onToggle, isAdmin
                 isActive={currentViewMode === item.id}
                 collapsed={collapsed}
                 onClick={() => handlePrimaryViewClick(item)}
+                isAdmin={showAdminSection}
               />
             ))}
           </nav>
@@ -429,6 +437,7 @@ const Sidebar = memo(({ activeStage, onStageChange, collapsed, onToggle, isAdmin
                 isActive={currentWorkspaceView === item.id}
                 collapsed={collapsed}
                 onClick={() => handleWorkspaceClick(item)}
+                isAdmin={showAdminSection}
               />
             ))}
             <button

@@ -66,7 +66,7 @@ const ProtectedRoute = ({ children }) => {
   if (!isAuthenticated) return <Navigate to="/login" />;
   if (needsOnboarding) return <Navigate to="/onboarding" />;
   // Redirect admins to their dashboard (same layout, but with team tab)
-  if (isAdmin) return <Navigate to="/admin/contacts/lead" />;
+  if (isAdmin) return <Navigate to="/admin/team" />;
 
   return children;
 };
@@ -103,7 +103,7 @@ const PublicRoute = ({ children }) => {
   if (isAuthenticated) {
     if (needsOnboarding) return <Navigate to="/onboarding" />;
     // Admins go to admin contacts, employees go to contacts
-    return <Navigate to={isAdmin ? "/admin/contacts/lead" : "/contacts/lead"} />;
+    return <Navigate to={isAdmin ? "/admin/team" : "/contacts/lead"} />;
   }
 
   return children;
@@ -185,7 +185,7 @@ function App() {
                         <AdminLayout />
                       </SuspenseWrapper>
                     </AdminRoute>
-                  }
+                  }true
                 >
                   {/* Default redirect to team*/}
                   <Route index element={<Navigate to="/admin/team" replace />} />

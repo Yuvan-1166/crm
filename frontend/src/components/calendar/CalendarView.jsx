@@ -80,7 +80,34 @@ const isMonthDataValid = (monthKey) => {
 };
 
 
-const CalendarView = () => {
+const CalendarView = ({ isAdmin = false }) => {
+  // Theme colors based on admin status - admin uses softer amber/warm tones
+  const themeColors = isAdmin ? {
+    primary: 'from-amber-500 to-orange-500',
+    primaryHover: 'hover:from-amber-600 hover:to-orange-600',
+    activeButton: 'bg-white text-amber-600 shadow-sm',
+    textPrimary: 'text-amber-600',
+    textHover: 'hover:text-amber-700',
+    bgHover: 'hover:bg-amber-50',
+    ringColor: 'ring-amber-500',
+    bgLight: 'bg-amber-50',
+    focusRing: 'focus:ring-amber-500',
+    spinner: 'text-amber-500',
+    dotColor: 'bg-amber-500',
+  } : {
+    primary: 'from-sky-500 to-blue-600',
+    primaryHover: 'hover:from-sky-600 hover:to-blue-700',
+    activeButton: 'bg-white text-sky-600 shadow-sm',
+    textPrimary: 'text-sky-600',
+    textHover: 'hover:text-sky-700',
+    bgHover: 'hover:bg-sky-50',
+    ringColor: 'ring-sky-500',
+    bgLight: 'bg-sky-50',
+    focusRing: 'focus:ring-sky-500',
+    spinner: 'text-sky-500',
+    dotColor: 'bg-sky-500',
+  };
+  
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState("month"); // 'month', 'week', 'today'
@@ -518,7 +545,7 @@ const CalendarView = () => {
 
   // Only show full loading screen on initial load without cached data
   if (initialLoading && !stats) {
-    return <CalendarSkeleton />;
+    return <CalendarSkeleton isAdmin={isAdmin} />;
   }
 
   return (
@@ -540,7 +567,7 @@ const CalendarView = () => {
         <div className="flex items-center gap-3">
           {/* Background refresh indicator */}
           {isBackgroundRefresh && (
-            <span className="flex items-center gap-1.5 text-xs text-sky-600">
+            <span className={`flex items-center gap-1.5 text-xs ${themeColors.textPrimary}`}>
               <RefreshCw className="w-3 h-3 animate-spin" />
               Updating...
             </span>
@@ -551,7 +578,7 @@ const CalendarView = () => {
             <button
               onClick={() => setFocusMode(null)}
               className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                focusMode === null ? "bg-white text-sky-600 shadow-sm" : "text-gray-600 hover:text-gray-800"
+                focusMode === null ? themeColors.activeButton : "text-gray-600 hover:text-gray-800"
               }`}
             >
               <CalendarDays className="w-4 h-4" />
@@ -559,7 +586,7 @@ const CalendarView = () => {
             <button
               onClick={goToToday}
               className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                focusMode === "today" ? "bg-white text-sky-600 shadow-sm" : "text-gray-600 hover:text-gray-800"
+                focusMode === "today" ? themeColors.activeButton : "text-gray-600 hover:text-gray-800"
               }`}
             >
               Today
@@ -567,7 +594,7 @@ const CalendarView = () => {
             <button
               onClick={() => setFocusMode("week")}
               className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                focusMode === "week" ? "bg-white text-sky-600 shadow-sm" : "text-gray-600 hover:text-gray-800"
+                focusMode === "week" ? themeColors.activeButton : "text-gray-600 hover:text-gray-800"
               }`}
             >
               This Week
@@ -576,7 +603,7 @@ const CalendarView = () => {
 
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-lg hover:from-sky-600 hover:to-blue-700 transition-all shadow-sm"
+            className={`flex items-center gap-2 px-4 py-2 bg-gradient-to-r ${themeColors.primary} text-white rounded-lg ${themeColors.primaryHover} transition-all shadow-sm`}
           >
             <Plus className="w-4 h-4" />
             Add Task
@@ -591,13 +618,13 @@ const CalendarView = () => {
             label="Today"
             value={stats.today_pending || 0}
             icon={<CalendarIcon className="w-5 h-5" />}
-            color="sky"
+            color={isAdmin ? "orange" : "sky"}
           />
           <StatCard
             label="This Week"
             value={stats.this_week || 0}
             icon={<ListTodo className="w-5 h-5" />}
-            color="blue"
+            color={isAdmin ? "amber" : "blue"}
           />
           <StatCard
             label="Overdue"
@@ -624,7 +651,7 @@ const CalendarView = () => {
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold text-gray-800">{monthName}</h2>
               {refreshing && (
-                <RefreshCw className="w-4 h-4 text-sky-500 animate-spin" />
+                <RefreshCw className={`w-4 h-4 ${themeColors.spinner} animate-spin`} />
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -640,7 +667,7 @@ const CalendarView = () => {
                   setCurrentDate(new Date());
                   setSelectedDate(new Date());
                 }}
-                className="px-3 py-1.5 text-sm text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"
+                className={`px-3 py-1.5 text-sm ${themeColors.textPrimary} ${themeColors.bgHover} rounded-lg transition-colors`}
               >
                 Today
               </button>
@@ -680,15 +707,15 @@ const CalendarView = () => {
                   className={`
                     relative p-2 min-h-[70px] rounded-lg text-left transition-all
                     ${day.isCurrentMonth ? "bg-white" : "bg-gray-50"}
-                    ${isSelected(day.date) ? "ring-2 ring-sky-500 bg-sky-50" : "hover:bg-gray-50"}
-                    ${isToday(day.date) ? "bg-sky-50" : ""}
+                    ${isSelected(day.date) ? `ring-2 ${themeColors.ringColor} ${themeColors.bgLight}` : "hover:bg-gray-50"}
+                    ${isToday(day.date) ? themeColors.bgLight : ""}
                   `}
                 >
                   <span
                     className={`
                       text-sm font-medium
                       ${!day.isCurrentMonth ? "text-gray-400" : "text-gray-700"}
-                      ${isToday(day.date) ? "text-sky-600 font-bold" : ""}
+                      ${isToday(day.date) ? `${themeColors.textPrimary} font-bold` : ""}
                     `}
                   >
                     {day.date.getDate()}
@@ -721,7 +748,7 @@ const CalendarView = () => {
                   {/* Status Dots */}
                   <div className="absolute bottom-1 right-1 flex gap-0.5">
                     {hasOverdue && <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />}
-                    {hasPending && <span className="w-1.5 h-1.5 bg-sky-500 rounded-full" />}
+                    {hasPending && <span className={`w-1.5 h-1.5 ${themeColors.dotColor} rounded-full`} />}
                   </div>
                 </button>
               );
@@ -745,7 +772,7 @@ const CalendarView = () => {
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-2 py-1 text-gray-600 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className={`text-sm border border-gray-200 rounded-lg px-2 py-1 text-gray-600 focus:outline-none focus:ring-2 ${themeColors.focusRing}`}
             >
               <option value="ALL">All Types</option>
               {Object.entries(TASK_TYPES).map(([key, config]) => (
@@ -772,7 +799,7 @@ const CalendarView = () => {
                 <p className="text-gray-500 text-sm">No tasks scheduled</p>
                 <button
                   onClick={() => setShowAddModal(true)}
-                  className="mt-3 text-sm text-sky-600 hover:text-sky-700"
+                  className={`mt-3 text-sm ${themeColors.textPrimary} ${themeColors.textHover}`}
                 >
                   + Add a task
                 </button>
@@ -785,6 +812,7 @@ const CalendarView = () => {
                   onToggleComplete={handleToggleComplete}
                   onEdit={setEditingTask}
                   onDelete={handleDeleteTask}
+                  isAdmin={isAdmin}
                 />
               ))
             )}
@@ -827,7 +855,7 @@ const CalendarView = () => {
 // =============================================================================
 // SKELETON LOADER - Shows content structure while loading
 // =============================================================================
-function CalendarSkeleton() {
+function CalendarSkeleton({ isAdmin = false }) {
   return (
     <div className="space-y-6 p-6 animate-pulse">
       {/* Header Skeleton */}
@@ -838,7 +866,7 @@ function CalendarSkeleton() {
         </div>
         <div className="flex items-center gap-3">
           <div className="h-10 w-40 bg-gray-100 rounded-lg" />
-          <div className="h-10 w-28 bg-gray-200 rounded-lg" />
+          <div className={`h-10 w-28 ${isAdmin ? 'bg-orange-200' : 'bg-gray-200'} rounded-lg`} />
         </div>
       </div>
 

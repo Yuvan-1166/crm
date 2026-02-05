@@ -136,6 +136,7 @@ const AdminLayout = memo(() => {
           setUserMenuOpen={setUserMenuOpen}
           userMenuRef={userMenuRef}
           onMobileMenuOpen={handleOpenMobileMenu}
+          isAdmin={true}
         />
 
         {/* Error Message */}

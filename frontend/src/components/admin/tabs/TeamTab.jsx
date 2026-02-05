@@ -39,8 +39,15 @@ const TeamTab = memo(({
   formatCompact,
   inviteLoading,
   actionMenuOpen,
-  user
+  user,
+  // Theme
+  isAdmin = true
 }) => {
+  // Theme-aware button styles - admin uses softer amber tones
+  const addButtonClass = isAdmin
+    ? "inline-flex items-center gap-2 h-9 px-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg font-medium text-sm hover:from-amber-600 hover:to-orange-600 transition-all shadow-sm"
+    : "inline-flex items-center gap-2 h-9 px-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-lg font-medium text-sm hover:from-sky-600 hover:to-blue-700 transition-all shadow-sm";
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100">
       {/* Filter Bar */}
@@ -56,7 +63,7 @@ const TeamTab = memo(({
                 placeholder="Search employees..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm"
+                className={`w-full h-9 pl-9 pr-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 ${isAdmin ? 'focus:ring-amber-500' : 'focus:ring-sky-500'} focus:border-transparent text-sm`}
               />
             </div>
             
@@ -65,7 +72,7 @@ const TeamTab = memo(({
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="appearance-none h-9 px-3 pr-8 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white text-sm"
+                className={`appearance-none h-9 px-3 pr-8 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 ${isAdmin ? 'focus:ring-orange-500' : 'focus:ring-sky-500'} bg-white text-sm`}
               >
                 <option value="all">All Status</option>
                 <option value="ACTIVE">Active</option>
@@ -80,7 +87,7 @@ const TeamTab = memo(({
               <select
                 value={filterDepartment}
                 onChange={(e) => setFilterDepartment(e.target.value)}
-                className="appearance-none h-9 px-3 pr-8 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white text-sm"
+                className={`appearance-none h-9 px-3 pr-8 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 ${isAdmin ? 'focus:ring-orange-500' : 'focus:ring-sky-500'} bg-white text-sm`}
               >
                 <option value="all">All Depts</option>
                 {departments.map(dept => (
@@ -93,7 +100,7 @@ const TeamTab = memo(({
             {/* Add Employee Button */}
             <button
               onClick={() => setShowAddModal(true)}
-              className="inline-flex items-center gap-2 h-9 px-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-lg font-medium text-sm hover:from-sky-600 hover:to-blue-700 transition-all shadow-sm"
+              className={addButtonClass}
             >
               <UserPlus className="w-4 h-4" />
               Invite Employee

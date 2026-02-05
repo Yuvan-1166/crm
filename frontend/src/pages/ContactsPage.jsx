@@ -199,6 +199,7 @@ const ContactsPage = memo(() => {
         onAddContact={() => setShowAddModal(true)}
         loading={loading}
         activeStage={activeStage}
+        isAdmin={isAdminRoute}
       />
 
       {/* Contact Detail Sidebar */}

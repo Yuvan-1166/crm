@@ -1,8 +1,21 @@
 import { useState } from 'react';
 import { ChevronUp, ChevronDown, Mail, Star, MessageSquare, Sparkles, User } from 'lucide-react';
 
-const ContactTable = ({ contacts = [], onContactSelect, onEmailClick, onFollowupsClick }) => {
+const ContactTable = ({ contacts = [], onContactSelect, onEmailClick, onFollowupsClick, isAdmin = false }) => {
   const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+
+  // Theme-aware colors - admin uses softer amber/warm tones
+  const themeColors = isAdmin ? {
+    avatarGradient: 'from-amber-500 to-orange-600',
+    hoverRow: 'hover:bg-amber-50/50',
+    sortIndicator: 'text-amber-600',
+    iconHover: 'hover:text-amber-600 hover:bg-amber-50',
+  } : {
+    avatarGradient: 'from-sky-400 to-blue-600',
+    hoverRow: 'hover:bg-sky-50/50',
+    sortIndicator: 'text-sky-600',
+    iconHover: 'hover:text-sky-600 hover:bg-sky-50',
+  };
 
   // Sortable columns configuration
   const columns = [
@@ -164,7 +177,7 @@ const ContactTable = ({ contacts = [], onContactSelect, onEmailClick, onFollowup
       );
     }
     return (
-      <span className="ml-1 text-sky-600">
+      <span className={`ml-1 ${themeColors.sortIndicator}`}>
         {sortConfig.direction === 'asc' ? (
           <ChevronUp className="w-3 h-3" />
         ) : (
@@ -201,12 +214,12 @@ const ContactTable = ({ contacts = [], onContactSelect, onEmailClick, onFollowup
               <tr
                 key={contact.contact_id}
                 onClick={() => onContactSelect(contact)}
-                className="hover:bg-sky-50/50 cursor-pointer transition-colors"
+                className={`${themeColors.hoverRow} cursor-pointer transition-colors`}
               >
                 {/* Name with Avatar */}
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white font-medium text-sm flex-shrink-0">
+                    <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${themeColors.avatarGradient} flex items-center justify-center text-white font-medium text-sm flex-shrink-0`}>
                       {contact.profile_picture ? (
                         <img
                           src={contact.profile_picture}
@@ -293,7 +306,7 @@ const ContactTable = ({ contacts = [], onContactSelect, onEmailClick, onFollowup
                         e.stopPropagation();
                         onEmailClick?.(contact);
                       }}
-                      className="p-2 text-gray-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"
+                      className={`p-2 text-gray-400 ${themeColors.iconHover} rounded-lg transition-colors`}
                       title="Send Email"
                     >
                       <Mail className="w-4 h-4" />

@@ -32,9 +32,9 @@ const AIOutreach = lazy(() => import('../outreach/AIOutreach'));
 const AutoPilot = lazy(() => import('../outreach/AutoPilot'));
 
 // Loading fallback component for lazy-loaded tabs
-const TabLoadingFallback = memo(() => (
+const TabLoadingFallback = memo(({ isAdmin = false }) => (
     <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
+        <Loader2 className={`w-6 h-6 animate-spin ${isAdmin ? 'text-orange-500' : 'text-sky-500'}`} />
         <span className="ml-2 text-gray-600">Loading...</span>
     </div>
 ));
@@ -47,7 +47,27 @@ const TABS = [
     { id: 'autopilot', label: 'Auto Pilot', icon: Plane },
 ];
 
-const GmailView = () => {
+const GmailView = ({ isAdmin = false }) => {
+    // Theme colors based on admin status - admin uses softer amber/warm tones
+    const themeColors = isAdmin ? {
+        primary: 'from-amber-500 to-orange-600',
+        buttonGradient: 'from-amber-500 to-orange-500',
+        buttonHover: 'hover:from-amber-600 hover:to-orange-600',
+        activeTab: 'bg-amber-100 text-amber-700',
+        focusRing: 'focus:ring-amber-500',
+        textPrimary: 'text-amber-600',
+        spinner: 'text-amber-500',
+        shadow: 'shadow-amber-500/20',
+    } : {
+        primary: 'from-sky-400 to-blue-600',
+        buttonGradient: 'from-sky-500 to-blue-600',
+        buttonHover: 'hover:from-sky-600 hover:to-blue-700',
+        activeTab: 'bg-sky-100 text-sky-700',
+        focusRing: 'focus:ring-sky-500',
+        textPrimary: 'text-sky-600',
+        spinner: 'text-sky-500',
+        shadow: 'shadow-sky-500/25',
+    };
     // Use context-based caching for persistence across navigation
     const { 
         getCachedData, 
@@ -321,7 +341,7 @@ const GmailView = () => {
     if (checkingConnection) {
         return (
             <div className="flex items-center justify-center h-96">
-                <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+                <Loader2 className={`w-8 h-8 animate-spin ${themeColors.spinner}`} />
                 <span className="ml-3 text-gray-600">Checking Gmail connection...</span>
             </div>
         );
@@ -332,8 +352,8 @@ const GmailView = () => {
         return (
             <div className="bg-white rounded-xl border border-gray-200 p-8">
                 <div className="text-center max-w-md mx-auto">
-                    <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-sky-100 to-blue-100 flex items-center justify-center mb-6">
-                        <Mail className="w-10 h-10 text-sky-600" />
+                    <div className={`w-20 h-20 mx-auto rounded-full bg-gradient-to-br ${isAdmin ? 'from-orange-100 to-amber-100' : 'from-sky-100 to-blue-100'} flex items-center justify-center mb-6`}>
+                        <Mail className={`w-10 h-10 ${isAdmin ? 'text-orange-600' : 'text-sky-600'}`} />
                     </div>
                     <h2 className="text-2xl font-bold text-gray-800 mb-3">Connect Your Gmail</h2>
                     <p className="text-gray-600 mb-6">
@@ -341,7 +361,7 @@ const GmailView = () => {
                     </p>
                     <button
                         onClick={handleConnectEmail}
-                        className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl font-medium hover:from-sky-600 hover:to-blue-700 transition-all shadow-lg shadow-sky-500/25"
+                        className={`inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r ${themeColors.buttonGradient} text-white rounded-xl font-medium ${themeColors.buttonHover} transition-all shadow-lg ${themeColors.shadow}`}
                     >
                         Connect Gmail
                         <ExternalLink className="w-4 h-4" />
@@ -368,7 +388,7 @@ const GmailView = () => {
                                 <ChevronLeft className="w-5 h-5 text-gray-600" />
                             </button>
                         )}
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center">
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${themeColors.primary} flex items-center justify-center`}>
                             <Mail className="w-5 h-5 text-white" />
                         </div>
                         <div>
@@ -388,7 +408,7 @@ const GmailView = () => {
                         </button>
                         <button
                             onClick={() => setShowCompose(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-lg hover:from-sky-600 hover:to-blue-700 transition-all"
+                            className={`flex items-center gap-2 px-4 py-2 bg-gradient-to-r ${themeColors.buttonGradient} text-white rounded-lg ${themeColors.buttonHover} transition-all`}
                         >
                             <Plus className="w-4 h-4" />
                             <span className="hidden sm:inline">Compose</span>
@@ -413,7 +433,7 @@ const GmailView = () => {
                                     setVisitedTabs(prev => new Set([...prev, tab.id]));
                                 }}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === tab.id
-                                    ? 'bg-sky-100 text-sky-700'
+                                    ? themeColors.activeTab
                                     : 'text-gray-600 hover:bg-gray-100'
                                     }`}
                             >
@@ -433,7 +453,7 @@ const GmailView = () => {
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="Search emails..."
-                            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                            className={`w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 ${themeColors.focusRing} focus:border-transparent`}
                         />
                     </form>
                 )}
@@ -451,7 +471,7 @@ const GmailView = () => {
             {/* AI Outreach Tab - stays mounted after first visit */}
             {visitedTabs.has('ai-outreach') && (
                 <div className={`p-4 ${activeTab === 'ai-outreach' ? '' : 'hidden'}`}>
-                    <Suspense fallback={<TabLoadingFallback />}>
+                    <Suspense fallback={<TabLoadingFallback isAdmin={isAdmin} />}>
                         <AIOutreach />
                     </Suspense>
                 </div>
@@ -460,7 +480,7 @@ const GmailView = () => {
             {/* AutoPilot Tab - stays mounted after first visit */}
             {visitedTabs.has('autopilot') && (
                 <div className={`p-4 ${activeTab === 'autopilot' ? '' : 'hidden'}`}>
-                    <Suspense fallback={<TabLoadingFallback />}>
+                    <Suspense fallback={<TabLoadingFallback isAdmin={isAdmin} />}>
                         <AutoPilot />
                     </Suspense>
                 </div>
@@ -479,6 +499,7 @@ const GmailView = () => {
                             onSelect={activeTab === 'drafts' ? handleDraftEdit : handleEmailSelect}
                             onLoadMore={handleLoadMore}
                             hasMore={hasMoreData()}
+                            isAdmin={isAdmin}
                         />
                     </div>
 
@@ -489,6 +510,7 @@ const GmailView = () => {
                                 email={selectedEmail}
                                 onBack={handleBackToList}
                                 onRefresh={handleRefresh}
+                                isAdmin={isAdmin}
                             />
                         ) : (
                             <div className="flex-1 flex items-center justify-center text-gray-400">

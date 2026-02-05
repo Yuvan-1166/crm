@@ -12,7 +12,24 @@ const EmailList = ({
   onSelect,
   onLoadMore,
   hasMore,
+  isAdmin = false,
 }) => {
+  // Theme colors based on admin status - admin uses softer amber/warm tones
+  const themeColors = isAdmin ? {
+    spinner: 'text-amber-500',
+    selectedBg: 'bg-amber-50 border-l-2 border-amber-500',
+    unreadBg: 'bg-amber-50/50',
+    unreadAvatar: 'bg-amber-100 text-amber-600',
+    unreadDot: 'bg-amber-500',
+    loadMoreText: 'text-amber-600 hover:bg-amber-50',
+  } : {
+    spinner: 'text-sky-500',
+    selectedBg: 'bg-sky-50 border-l-2 border-sky-500',
+    unreadBg: 'bg-blue-50/50',
+    unreadAvatar: 'bg-sky-100 text-sky-600',
+    unreadDot: 'bg-sky-500',
+    loadMoreText: 'text-sky-600 hover:bg-sky-50',
+  };
   // Format date for display
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -45,7 +62,7 @@ const EmailList = ({
   if (loading && emails.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
+        <Loader2 className={`w-6 h-6 animate-spin ${themeColors.spinner}`} />
       </div>
     );
   }
@@ -80,13 +97,13 @@ const EmailList = ({
             key={id}
             onClick={() => onSelect(email)}
             className={`w-full text-left p-4 hover:bg-gray-50 transition-colors ${
-              isSelected ? 'bg-sky-50 border-l-2 border-sky-500' : ''
-            } ${isUnread ? 'bg-blue-50/50' : ''}`}
+              isSelected ? themeColors.selectedBg : ''
+            } ${isUnread ? themeColors.unreadBg : ''}`}
           >
             <div className="flex items-start gap-3">
               {/* Avatar */}
               <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                isUnread ? 'bg-sky-100 text-sky-600' : 'bg-gray-100 text-gray-500'
+                isUnread ? themeColors.unreadAvatar : 'bg-gray-100 text-gray-500'
               }`}>
                 {isDrafts ? (
                   <FileEdit className="w-4 h-4" />
@@ -119,7 +136,7 @@ const EmailList = ({
 
               {/* Unread indicator */}
               {isUnread && (
-                <div className="w-2 h-2 rounded-full bg-sky-500 flex-shrink-0 mt-2" />
+                <div className={`w-2 h-2 rounded-full ${themeColors.unreadDot} flex-shrink-0 mt-2`} />
               )}
             </div>
           </button>
@@ -132,7 +149,7 @@ const EmailList = ({
           <button
             onClick={onLoadMore}
             disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm text-sky-600 hover:bg-sky-50 rounded-lg transition-colors disabled:opacity-50"
+            className={`inline-flex items-center gap-2 px-4 py-2 text-sm ${themeColors.loadMoreText} rounded-lg transition-colors disabled:opacity-50`}
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
