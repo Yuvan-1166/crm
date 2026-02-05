@@ -243,6 +243,28 @@ router.post(
   pagesController.duplicatePage
 );
 
+/**
+ * @route   POST /outreach/pages/:pageId/publish
+ * @desc    Publish a page
+ * @access  Employee
+ */
+router.post(
+  "/pages/:pageId/publish",
+  authenticateEmployee,
+  pagesController.publishPage
+);
+
+/**
+ * @route   POST /outreach/pages/:pageId/archive
+ * @desc    Archive a page
+ * @access  Employee
+ */
+router.post(
+  "/pages/:pageId/archive",
+  authenticateEmployee,
+  pagesController.archivePage
+);
+
 /* ---------------------------------------------------
    PAGE BUILDER - COMPONENTS
 --------------------------------------------------- */

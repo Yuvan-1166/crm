@@ -42,12 +42,14 @@ export const submitFormBySlug = async (req, res, next) => {
     if (!targetComponentId) {
       const [components] = await db.query(
         `SELECT component_id FROM outreach_page_components 
-         WHERE page_id = ? AND type = 'form' AND is_visible = TRUE 
+         WHERE page_id = ? AND component_type = 'form' AND is_visible = TRUE 
          ORDER BY sort_order ASC LIMIT 1`,
         [pageId]
       );
       if (components.length > 0) {
         targetComponentId = components[0].component_id;
+      } else {
+        return res.status(400).json({ success: false, message: "No form found on this page" });
       }
     }
 

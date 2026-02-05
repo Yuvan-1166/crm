@@ -39,7 +39,7 @@ export const submitFormResponse = async (pageId, componentId, formData, metadata
     
   const requiredFields = (config.fields || [])
     .filter(f => f.required)
-    .map(f => f.name);
+    .map(f => f.id || f.name); // Support both id and name
 
   for (const field of requiredFields) {
     if (!formData[field] || formData[field].toString().trim() === "") {
@@ -48,7 +48,7 @@ export const submitFormResponse = async (pageId, componentId, formData, metadata
   }
 
   // Sanitize form data - only keep fields defined in the form
-  const allowedFields = (config.fields || []).map(f => f.name);
+  const allowedFields = (config.fields || []).map(f => f.id || f.name); // Support both id and name
   const sanitizedData = {};
   for (const [key, value] of Object.entries(formData)) {
     if (allowedFields.includes(key)) {
@@ -109,7 +109,7 @@ export const getPageResponses = async (pageId, companyId, filters = {}) => {
     SELECT r.*, 
            c.name as contact_name, 
            c.email as contact_email,
-           c.company as contact_company,
+           c.job_title as contact_job_title,
            comp.component_type,
            comp.config as component_config,
            e.name as viewed_by_name
@@ -312,7 +312,7 @@ export const getResponseById = async (responseId, companyId) => {
             c.name as contact_name, 
             c.email as contact_email,
             c.phone as contact_phone,
-            c.company as contact_company,
+            c.job_title as contact_job_title,
             comp.config as component_config,
             e.name as viewed_by_name
      FROM outreach_form_responses r

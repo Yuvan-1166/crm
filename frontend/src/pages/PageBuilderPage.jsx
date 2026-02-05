@@ -228,10 +228,13 @@ export default function PageBuilderPage() {
     
     try {
       setSaving(true);
-      await pagesService.updatePage(pageId, {
+      const updated = await pagesService.updatePage(pageId, {
         ...page,
         components
       });
+      // Update local state with server response (includes component IDs)
+      setPage(updated);
+      setComponents(updated.components || []);
       setHasChanges(false);
     } catch (err) {
       console.error('Auto-save failed:', err);
@@ -310,12 +313,18 @@ export default function PageBuilderPage() {
           ...page,
           components
         });
+        // Update local state with server response (includes component IDs)
+        setPage(created);
+        setComponents(created.components || []);
         navigate(`${basePath}/pages/${created.page_id}/edit`, { replace: true });
       } else {
-        await pagesService.updatePage(pageId, {
+        const updated = await pagesService.updatePage(pageId, {
           ...page,
           components
         });
+        // Update local state with server response (includes new component IDs)
+        setPage(updated);
+        setComponents(updated.components || []);
       }
       
       setHasChanges(false);

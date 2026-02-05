@@ -51,10 +51,10 @@ const ensureUniqueSlug = async (companyId, baseSlug, excludePageId = null) => {
 --------------------------------------------------- */
 
 /**
- * Create a new outreach page
+ * Create a new outreach page with components
  */
 export const createPage = async (companyId, empId, pageData) => {
-  const { title, description, metaTitle, metaDescription, ogImageUrl } = pageData;
+  const { title, description, metaTitle, metaDescription, ogImageUrl, components = [] } = pageData;
 
   const baseSlug = generateSlug(title);
   const slug = await ensureUniqueSlug(companyId, baseSlug);
@@ -66,7 +66,27 @@ export const createPage = async (companyId, empId, pageData) => {
     [companyId, empId, title, slug, description, metaTitle, metaDescription, ogImageUrl]
   );
 
-  return getPageById(result.insertId, companyId);
+  const pageId = result.insertId;
+
+  // Insert components if provided
+  if (components.length > 0) {
+    const componentValues = components.map((comp, index) => [
+      pageId,
+      comp.type || comp.component_type,
+      comp.sort_order ?? index,
+      JSON.stringify(comp.config || {}),
+      comp.is_visible !== false,
+    ]);
+
+    await db.query(
+      `INSERT INTO outreach_page_components 
+       (page_id, component_type, sort_order, config, is_visible)
+       VALUES ?`,
+      [componentValues]
+    );
+  }
+
+  return getPageById(pageId, companyId);
 };
 
 /**
@@ -93,9 +113,10 @@ export const getPageById = async (pageId, companyId) => {
     [pageId]
   );
 
-  // Parse JSON config for each component
+  // Parse JSON config and normalize field names for frontend
   page.components = components.map((c) => ({
     ...c,
+    type: c.component_type, // Frontend expects 'type' not 'component_type'
     config: typeof c.config === "string" ? JSON.parse(c.config) : c.config,
   }));
 
@@ -132,6 +153,7 @@ export const getPageBySlug = async (companyId, slug) => {
 
   page.components = components.map((c) => ({
     ...c,
+    type: c.component_type, // Frontend expects 'type' not 'component_type'
     config: typeof c.config === "string" ? JSON.parse(c.config) : c.config,
   }));
 
@@ -168,6 +190,7 @@ export const getPageBySlugOnly = async (slug) => {
 
   page.components = components.map((c) => ({
     ...c,
+    type: c.component_type, // Frontend expects 'type' not 'component_type'
     config: typeof c.config === "string" ? JSON.parse(c.config) : c.config,
   }));
 
@@ -241,9 +264,11 @@ export const getPages = async (companyId, filters = {}) => {
 };
 
 /**
- * Update page metadata
+ * Update page metadata and components
  */
 export const updatePage = async (pageId, companyId, updates) => {
+  const { components, ...metadataUpdates } = updates;
+  
   const allowedFields = [
     "title",
     "description",
@@ -256,7 +281,7 @@ export const updatePage = async (pageId, companyId, updates) => {
   const setClauses = [];
   const params = [];
 
-  for (const [key, value] of Object.entries(updates)) {
+  for (const [key, value] of Object.entries(metadataUpdates)) {
     const snakeKey = key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
     if (allowedFields.includes(snakeKey)) {
       setClauses.push(`${snakeKey} = ?`);
@@ -265,28 +290,95 @@ export const updatePage = async (pageId, companyId, updates) => {
   }
 
   // Handle slug update if title changes
-  if (updates.title) {
-    const newSlug = await ensureUniqueSlug(companyId, generateSlug(updates.title), pageId);
+  if (metadataUpdates.title) {
+    const newSlug = await ensureUniqueSlug(companyId, generateSlug(metadataUpdates.title), pageId);
     setClauses.push("slug = ?");
     params.push(newSlug);
   }
 
   // Handle publish date
-  if (updates.status === "published") {
+  if (metadataUpdates.status === "published") {
     setClauses.push("published_at = COALESCE(published_at, NOW())");
   }
 
-  if (setClauses.length === 0) {
-    return getPageById(pageId, companyId);
+  // Update page metadata if there are changes
+  if (setClauses.length > 0) {
+    params.push(pageId, companyId);
+    await db.query(
+      `UPDATE outreach_pages SET ${setClauses.join(", ")} 
+       WHERE page_id = ? AND company_id = ?`,
+      params
+    );
   }
 
-  params.push(pageId, companyId);
+  // Handle components update if provided
+  if (components !== undefined && Array.isArray(components)) {
+    // Get existing component IDs
+    const [existingComponents] = await db.query(
+      `SELECT component_id FROM outreach_page_components WHERE page_id = ?`,
+      [pageId]
+    );
+    const existingIds = new Set(existingComponents.map((c) => c.component_id));
 
-  await db.query(
-    `UPDATE outreach_pages SET ${setClauses.join(", ")} 
-     WHERE page_id = ? AND company_id = ?`,
-    params
-  );
+    // Separate components into updates and inserts
+    const toUpdate = [];
+    const toInsert = [];
+    const newIds = new Set();
+
+    for (let i = 0; i < components.length; i++) {
+      const comp = components[i];
+      if (comp.component_id && existingIds.has(comp.component_id)) {
+        toUpdate.push({ ...comp, sort_order: i });
+        newIds.add(comp.component_id);
+      } else {
+        toInsert.push({ ...comp, sort_order: i });
+      }
+    }
+
+    // Delete components that are no longer present
+    const toDelete = [...existingIds].filter((id) => !newIds.has(id));
+    if (toDelete.length > 0) {
+      await db.query(
+        `DELETE FROM outreach_page_components WHERE component_id IN (?) AND page_id = ?`,
+        [toDelete, pageId]
+      );
+    }
+
+    // Update existing components
+    for (const comp of toUpdate) {
+      await db.query(
+        `UPDATE outreach_page_components 
+         SET config = ?, sort_order = ?, is_visible = ?, component_type = ?
+         WHERE component_id = ? AND page_id = ?`,
+        [
+          JSON.stringify(comp.config || {}),
+          comp.sort_order,
+          comp.is_visible !== false,
+          comp.type || comp.component_type,
+          comp.component_id,
+          pageId,
+        ]
+      );
+    }
+
+    // Insert new components
+    if (toInsert.length > 0) {
+      const componentValues = toInsert.map((comp) => [
+        pageId,
+        comp.type || comp.component_type,
+        comp.sort_order,
+        JSON.stringify(comp.config || {}),
+        comp.is_visible !== false,
+      ]);
+
+      await db.query(
+        `INSERT INTO outreach_page_components 
+         (page_id, component_type, sort_order, config, is_visible)
+         VALUES ?`,
+        [componentValues]
+      );
+    }
+  }
 
   return getPageById(pageId, companyId);
 };

@@ -118,6 +118,46 @@ export const duplicatePage = async (req, res, next) => {
   }
 };
 
+/**
+ * Publish a page
+ * POST /outreach/pages/:pageId/publish
+ */
+export const publishPage = async (req, res, next) => {
+  try {
+    const { companyId } = req.user;
+    const { pageId } = req.params;
+    const page = await pagesService.updatePage(pageId, companyId, { status: "published" });
+
+    if (!page) {
+      return res.status(404).json({ success: false, message: "Page not found" });
+    }
+
+    res.json({ success: true, data: page });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Archive a page
+ * POST /outreach/pages/:pageId/archive
+ */
+export const archivePage = async (req, res, next) => {
+  try {
+    const { companyId } = req.user;
+    const { pageId } = req.params;
+    const page = await pagesService.updatePage(pageId, companyId, { status: "archived" });
+
+    if (!page) {
+      return res.status(404).json({ success: false, message: "Page not found" });
+    }
+
+    res.json({ success: true, data: page });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /* ---------------------------------------------------
    COMPONENT OPERATIONS
 --------------------------------------------------- */
