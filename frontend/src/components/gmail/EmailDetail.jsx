@@ -22,7 +22,18 @@ import {
  * EmailDetail Component
  * Displays full email content
  */
-const EmailDetail = ({ email, onBack, onRefresh }) => {
+const EmailDetail = ({ email, onBack, onRefresh, isAdmin = false }) => {
+  // Theme colors based on admin status - admin uses softer amber/warm tones
+  const themeColors = isAdmin ? {
+    spinner: 'text-amber-500',
+    retryText: 'text-amber-600 hover:text-amber-700',
+    avatarGradient: 'from-amber-500 to-orange-600',
+  } : {
+    spinner: 'text-sky-500',
+    retryText: 'text-sky-600 hover:text-sky-700',
+    avatarGradient: 'from-sky-400 to-blue-600',
+  };
+  
   const [fullEmail, setFullEmail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -110,7 +121,7 @@ const EmailDetail = ({ email, onBack, onRefresh }) => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
+        <Loader2 className={`w-6 h-6 animate-spin ${themeColors.spinner}`} />
       </div>
     );
   }
@@ -122,7 +133,7 @@ const EmailDetail = ({ email, onBack, onRefresh }) => {
         <p>{error}</p>
         <button
           onClick={fetchFullEmail}
-          className="mt-3 text-sky-600 hover:text-sky-700"
+          className={`mt-3 ${themeColors.retryText}`}
         >
           Try again
         </button>
@@ -181,7 +192,7 @@ const EmailDetail = ({ email, onBack, onRefresh }) => {
 
         {/* From/To Info */}
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white font-medium flex-shrink-0">
+          <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${themeColors.avatarGradient} flex items-center justify-center text-white font-medium flex-shrink-0`}>
             {from.name?.[0]?.toUpperCase() || <User className="w-5 h-5" />}
           </div>
           <div className="flex-1 min-w-0">

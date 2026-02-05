@@ -1,8 +1,25 @@
 import { useState } from 'react';
 import { Mail, Star, MessageSquare, Sparkles, User } from 'lucide-react';
 
-const ContactCard = ({ contact, onSelect, onEmailClick, onFollowupsClick }) => {
+const ContactCard = ({ contact, onSelect, onEmailClick, onFollowupsClick, isAdmin = false }) => {
   const [imageError, setImageError] = useState(false);
+
+  // Theme-aware colors - admin uses softer amber/warm tones for a professional look
+  const themeColors = isAdmin ? {
+    avatarGradient: 'from-amber-500 to-orange-600',
+    buttonGradient: 'from-amber-500 to-orange-500',
+    buttonHover: 'hover:from-amber-600 hover:to-orange-600',
+    hoverText: 'group-hover:text-amber-600',
+    iconHover: 'hover:bg-amber-50 hover:text-amber-600',
+    cardBorder: 'hover:border-amber-200',
+  } : {
+    avatarGradient: 'from-sky-400 to-blue-600',
+    buttonGradient: 'from-sky-500 to-blue-600',
+    buttonHover: 'hover:from-sky-600 hover:to-blue-700',
+    hoverText: 'group-hover:text-sky-600',
+    iconHover: 'hover:bg-sky-50 hover:text-sky-600',
+    cardBorder: 'hover:border-sky-200',
+  };
 
   // Calculate star rating (0-5 based on average_rating 0-10)
   const starRating = contact.average_rating ? Math.round((contact.average_rating / 10) * 5) : 0;
@@ -119,7 +136,7 @@ const ContactCard = ({ contact, onSelect, onEmailClick, onFollowupsClick }) => {
                 onError={() => setImageError(true)}
               />
             ) : (
-              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white font-bold text-lg ring-2 ring-gray-100">
+              <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${themeColors.avatarGradient} flex items-center justify-center text-white font-bold text-lg ring-2 ring-gray-100`}>
                 {getInitials(contact.name)}
               </div>
             )}
@@ -129,7 +146,7 @@ const ContactCard = ({ contact, onSelect, onEmailClick, onFollowupsClick }) => {
 
           {/* Contact Info */}
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-gray-900 truncate group-hover:text-sky-600 transition-colors">
+            <h3 className={`font-semibold text-gray-900 truncate ${themeColors.hoverText} transition-colors`}>
               {contact.name}
             </h3>
             <p className="text-sm text-gray-500 truncate mt-0.5">
@@ -170,7 +187,7 @@ const ContactCard = ({ contact, onSelect, onEmailClick, onFollowupsClick }) => {
               e.stopPropagation();
               onEmailClick(contact);
             }}
-            className="flex items-center justify-center w-10 h-10 rounded-lg bg-gray-50 hover:bg-sky-50 text-gray-500 hover:text-sky-600 transition-all hover:shadow-sm"
+            className={`flex items-center justify-center w-10 h-10 rounded-lg bg-gray-50 ${themeColors.iconHover} text-gray-500 transition-all hover:shadow-sm`}
             title="Send Email"
             aria-label="Send Email"
           >
@@ -183,7 +200,7 @@ const ContactCard = ({ contact, onSelect, onEmailClick, onFollowupsClick }) => {
               e.stopPropagation();
               onFollowupsClick(contact);
             }}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 rounded-lg transition-all shadow-sm hover:shadow-md"
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-r ${themeColors.buttonGradient} ${themeColors.buttonHover} rounded-lg transition-all shadow-sm hover:shadow-md`}
           >
             <MessageSquare className="w-4 h-4" />
             Followups

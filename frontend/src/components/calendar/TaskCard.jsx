@@ -20,11 +20,13 @@ import {
   RefreshCw,
 } from "lucide-react";
 // Task Card Component
-const TaskCard = ({ task, onToggleComplete, onEdit, onDelete }) => {
+const TaskCard = ({ task, onToggleComplete, onEdit, onDelete, isAdmin = false }) => {
   const config = TASK_TYPES[task.task_type] || TASK_TYPES.OTHER;
   const Icon = config.icon;
   const isCompleted = task.status === "COMPLETED";
   const isOverdue = task.status === "OVERDUE";
+  
+  const checkboxHoverColor = isAdmin ? "hover:border-orange-500" : "hover:border-sky-500";
 
   const formatTime = (timeStr) => {
     if (!timeStr) return "";
@@ -48,7 +50,7 @@ const TaskCard = ({ task, onToggleComplete, onEdit, onDelete }) => {
           onClick={() => onToggleComplete(task)}
           className={`
             mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors
-            ${isCompleted ? "bg-emerald-500 border-emerald-500 text-white" : "border-gray-300 hover:border-sky-500"}
+            ${isCompleted ? "bg-emerald-500 border-emerald-500 text-white" : `border-gray-300 ${checkboxHoverColor}`}
           `}
         >
           {isCompleted && <CheckCircle className="w-3 h-3" />}

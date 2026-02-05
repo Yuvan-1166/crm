@@ -11,13 +11,33 @@ const ContactGrid = ({
   onFollowupsClick,
   onAddContact,
   loading = false,
-  activeStage = 'LEAD'
+  activeStage = 'LEAD',
+  isAdmin = false
 }) => {
   const navigate = useNavigate();
   const [activeTemperature, setActiveTemperature] = useState('COLD');
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('table');
+
+  // Theme-aware colors - admin uses softer amber/warm tones
+  const themeColors = isAdmin ? {
+    primary: 'from-amber-500 to-orange-500',
+    primaryHover: 'hover:from-amber-600 hover:to-orange-600',
+    shadow: 'shadow-amber-500/20',
+    shadowHover: 'hover:shadow-amber-500/25',
+    ring: 'focus:ring-amber-500',
+    text: 'text-amber-600',
+    bg: 'bg-amber-50',
+  } : {
+    primary: 'from-sky-500 to-blue-600',
+    primaryHover: 'hover:from-sky-600 hover:to-blue-700',
+    shadow: 'shadow-sky-500/25',
+    shadowHover: 'hover:shadow-sky-500/30',
+    ring: 'focus:ring-sky-500',
+    text: 'text-sky-600',
+    bg: 'bg-sky-50',
+  };
 
   // Filter contacts by temperature and search
   useEffect(() => {
@@ -85,7 +105,7 @@ const ContactGrid = ({
           <div className="flex items-center gap-3">
             <button
               onClick={onAddContact}
-              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl font-medium hover:from-sky-600 hover:to-blue-700 transition-all shadow-lg shadow-sky-500/25 hover:shadow-xl hover:shadow-sky-500/30"
+              className={`flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r ${themeColors.primary} text-white rounded-xl font-medium ${themeColors.primaryHover} transition-all shadow-lg ${themeColors.shadow} hover:shadow-xl ${themeColors.shadowHover}`}
             >
               <Plus className="w-5 h-5" />
               <span>Add Lead</span>
@@ -134,7 +154,7 @@ const ContactGrid = ({
               placeholder="Search contacts..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all text-sm"
+              className={`w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 ${themeColors.ring} focus:border-transparent transition-all text-sm`}
             />
           </div>
           
@@ -144,7 +164,7 @@ const ContactGrid = ({
               onClick={() => setViewMode('grid')}
               className={`p-2.5 rounded-lg transition-all ${
                 viewMode === 'grid' 
-                  ? 'bg-white shadow-sm text-sky-600' 
+                  ? `bg-white shadow-sm ${themeColors.text}` 
                   : 'text-gray-500 hover:text-gray-700'
               }`}
               title="Grid View"
@@ -155,7 +175,7 @@ const ContactGrid = ({
               onClick={() => setViewMode('table')}
               className={`p-2.5 rounded-lg transition-all ${
                 viewMode === 'table' 
-                  ? 'bg-white shadow-sm text-sky-600' 
+                  ? `bg-white shadow-sm ${themeColors.text}` 
                   : 'text-gray-500 hover:text-gray-700'
               }`}
               title="Table View (Sortable)"
@@ -171,8 +191,8 @@ const ContactGrid = ({
         <div className="flex-1 flex items-center justify-center py-20">
           <div className="flex flex-col items-center gap-4">
             <div className="relative">
-              <div className="w-16 h-16 border-4 border-sky-100 rounded-full"></div>
-              <div className="absolute top-0 left-0 w-16 h-16 border-4 border-sky-500 rounded-full border-t-transparent animate-spin"></div>
+              <div className={`w-16 h-16 border-4 ${isAdmin ? 'border-orange-100' : 'border-sky-100'} rounded-full`}></div>
+              <div className={`absolute top-0 left-0 w-16 h-16 border-4 ${isAdmin ? 'border-orange-500' : 'border-sky-500'} rounded-full border-t-transparent animate-spin`}></div>
             </div>
             <p className="text-gray-500 font-medium">Loading contacts...</p>
           </div>
@@ -209,7 +229,7 @@ const ContactGrid = ({
           {!searchQuery && (
             <button
               onClick={onAddContact}
-              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl font-medium hover:from-sky-600 hover:to-blue-700 transition-all shadow-lg shadow-sky-500/25"
+              className={`flex items-center gap-2 px-6 py-3 bg-gradient-to-r ${themeColors.primary} text-white rounded-xl font-medium ${themeColors.primaryHover} transition-all shadow-lg ${themeColors.shadow}`}
             >
               <Plus className="w-5 h-5" />
               Add Your First Lead
@@ -226,6 +246,7 @@ const ContactGrid = ({
             onContactSelect={onContactSelect}
             onEmailClick={onEmailClick}
             onFollowupsClick={onFollowupsClick}
+            isAdmin={isAdmin}
           />
         ) : (
           <div className={`${
@@ -241,6 +262,7 @@ const ContactGrid = ({
                 onEmailClick={onEmailClick}
                 onFollowupsClick={onFollowupsClick}
                 viewMode={viewMode}
+                isAdmin={isAdmin}
               />
             ))}
           </div>

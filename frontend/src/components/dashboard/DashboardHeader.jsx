@@ -46,7 +46,7 @@ NotificationBell.displayName = 'NotificationBell';
 /**
  * User menu button component
  */
-const UserMenuButton = memo(({ user, isOpen, onClick }) => (
+const UserMenuButton = memo(({ user, isOpen, onClick, isAdmin }) => (
   <button
     onClick={onClick}
     className="flex items-center gap-3 pl-3 border-l border-gray-200 hover:bg-gray-50 rounded-lg py-1.5 pr-2 transition-colors"
@@ -56,7 +56,11 @@ const UserMenuButton = memo(({ user, isOpen, onClick }) => (
       <p className="text-xs text-gray-500">{user?.department || user?.role}</p>
     </div>
     <div className="relative">
-      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white font-semibold text-sm">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-semibold text-sm ${
+        isAdmin 
+          ? 'bg-gradient-to-br from-amber-500 to-orange-600' 
+          : 'bg-gradient-to-br from-sky-400 to-blue-600'
+      }`}>
         {getInitials(user?.name)}
       </div>
       <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
@@ -77,10 +81,14 @@ const DashboardHeader = memo(({
   user,
   logout,
   onMobileMenuOpen,
+  isAdmin = false,
 }) => {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const userMenuRef = useRef(null);
+  
+  // Theme colors based on admin status
+  const headerBorderColor = isAdmin ? 'border-orange-100' : 'border-gray-100';
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -108,16 +116,16 @@ const DashboardHeader = memo(({
   return (
     <>
     <MobileSearchModal isOpen={mobileSearchOpen} onClose={closeMobileSearch} />
-    <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-gray-100">
+    <header className={`sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b ${headerBorderColor}`}>
       <div className="flex items-center justify-between h-14 px-4 lg:px-6">
         {/* Left - Mobile Menu & Title */}
         <div className="flex items-center gap-4">
           <button
             onClick={onMobileMenuOpen}
-            className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
+            className={`lg:hidden p-2 rounded-lg ${isAdmin ? 'hover:bg-orange-50' : 'hover:bg-gray-100'}`}
             aria-label="Open mobile menu"
           >
-            <Menu className="w-5 h-5 text-gray-600" />
+            <Menu className={`w-5 h-5 ${isAdmin ? 'text-orange-600' : 'text-gray-600'}`} />
           </button>
 
           {/* Page Title - Desktop */}
@@ -152,6 +160,7 @@ const DashboardHeader = memo(({
               user={user}
               isOpen={userMenuOpen}
               onClick={toggleUserMenu}
+              isAdmin={isAdmin}
             />
 
             {/* Dropdown Menu */}
