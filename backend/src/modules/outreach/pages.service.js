@@ -137,11 +137,7 @@ export const getPageBySlug = async (companyId, slug) => {
 
   const page = pages[0];
 
-  // Increment view count
-  await db.query(
-    `UPDATE outreach_pages SET view_count = view_count + 1 WHERE page_id = ?`,
-    [page.page_id]
-  );
+  // Note: View count is incremented via recordVisit in controller
 
   // Fetch visible components only
   const [components] = await db.query(
@@ -174,11 +170,7 @@ export const getPageBySlugOnly = async (slug) => {
 
   const page = pages[0];
 
-  // Increment view count
-  await db.query(
-    `UPDATE outreach_pages SET view_count = view_count + 1 WHERE page_id = ?`,
-    [page.page_id]
-  );
+  // Note: View count is incremented via recordVisit in controller
 
   // Fetch visible components only
   const [components] = await db.query(
@@ -769,6 +761,12 @@ export const recordVisit = async (pageId, visitData) => {
       utm?.term || null,
       utm?.content || null,
     ]
+  );
+
+  // Increment page view count
+  await db.query(
+    `UPDATE outreach_pages SET view_count = view_count + 1 WHERE page_id = ?`,
+    [pageId]
   );
 
   // Update contact tracking if we have a token

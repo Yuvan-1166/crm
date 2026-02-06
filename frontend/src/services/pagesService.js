@@ -204,8 +204,11 @@ export const bulkUpdateResponses = async (responseIds, status) => {
 /**
  * Delete response
  */
-export const deleteResponse = async (responseId) => {
-  const response = await api.delete(`/outreach/responses/${responseId}`);
+export const deleteResponse = async (pageId, responseId) => {
+  // pageId is kept for API consistency but not used in endpoint
+  // If only one arg is passed, treat it as responseId (backward compat)
+  const actualResponseId = responseId !== undefined ? responseId : pageId;
+  const response = await api.delete(`/outreach/responses/${actualResponseId}`);
   return response.data;
 };
 
@@ -256,10 +259,11 @@ export const archivePage = async (pageId) => {
 };
 
 /**
- * Update response status
+ * Update response status (convenience wrapper)
  */
 export const updateResponseStatus = async (pageId, responseId, status) => {
-  const response = await api.patch(`${BASE_URL}/${pageId}/responses/${responseId}`, { status });
+  // pageId is kept for API consistency but not used in endpoint
+  const response = await api.patch(`/outreach/responses/${responseId}`, { status });
   return response.data.data;
 };
 
