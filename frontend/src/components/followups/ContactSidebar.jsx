@@ -349,7 +349,7 @@ DormantButton.displayName = 'DormantButton';
  */
 const PromoteButton = memo(({ nextStage, onPromote, onMoveToDormant, currentStatus }) => {
   return (
-    <div className="px-5 pb-5 mt-auto flex-shrink-0 space-y-2">
+    <div className="px-5 py-4 flex-shrink-0 space-y-2 border-t border-gray-100">
       <DormantButton onMoveToDormant={onMoveToDormant} currentStatus={currentStatus} />
       {nextStage && (
         <button
@@ -384,18 +384,24 @@ const ContactSidebar = memo(({
   const nextStage = getNextStage(contact?.status);
 
   return (
-    <div className="w-96 bg-white border-l border-gray-200 flex flex-col h-screen">
+    <div className="w-80 lg:w-96 bg-white border-l border-gray-200 flex flex-col h-screen flex-shrink-0">
       <ProfileHero contact={contact} averageRating={averageRating} />
-      <ProfileInfo contact={contact} averageRating={averageRating} />
-      <ContactTimeline 
-        lastContactedAt={lastContactedAt} 
-        nextUpcomingTask={nextUpcomingTask}
-        onAddTask={onAddTask}
-      />
-      <QuickStats contact={contact} sessionsCount={sessionsCount} />
-      <SessionBreakdown sessionStats={sessionStats} />
-      <ContactInfo contact={contact} />
-      <QuickActions onAddSession={onAddSession} onAddTask={onAddTask} />
+      
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        <ProfileInfo contact={contact} averageRating={averageRating} />
+        <ContactTimeline 
+          lastContactedAt={lastContactedAt} 
+          nextUpcomingTask={nextUpcomingTask}
+          onAddTask={onAddTask}
+        />
+        <QuickStats contact={contact} sessionsCount={sessionsCount} />
+        <SessionBreakdown sessionStats={sessionStats} />
+        <ContactInfo contact={contact} />
+        <QuickActions onAddSession={onAddSession} onAddTask={onAddTask} />
+      </div>
+      
+      {/* Pinned bottom actions */}
       <PromoteButton 
         nextStage={nextStage} 
         onPromote={() => onPromote(nextStage)} 
