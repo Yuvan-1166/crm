@@ -92,7 +92,24 @@ export default function ColorPicker({ value, onChange, label, compact = false, a
     }
   };
   
-  const currentColor = value || '#ffffff';
+  // Normalize color value - handle objects, invalid strings, etc.
+  const normalizeColor = (val) => {
+    if (!val) return '#ffffff';
+    if (typeof val === 'object') {
+      // If it's a gradient object, extract first color
+      if (val.colors && Array.isArray(val.colors)) {
+        return val.colors[0] || '#ffffff';
+      }
+      return '#ffffff';
+    }
+    // Validate hex color
+    if (typeof val === 'string' && /^#[0-9A-F]{6}$/i.test(val)) {
+      return val;
+    }
+    return '#ffffff';
+  };
+  
+  const currentColor = normalizeColor(value);
   const [style, setStyle] = useState({});
   useEffect(() => {
     if (!buttonRef.current || !isOpen) return;

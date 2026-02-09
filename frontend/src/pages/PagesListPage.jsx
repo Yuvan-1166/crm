@@ -419,7 +419,7 @@ function PageCard({
       <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
         <div className="flex items-center gap-1">
           <Eye className="w-4 h-4" />
-          <span>{((page.view_count || 0) / 2)} views</span>
+          <span>{Math.ceil((page.view_count || 0) / 2)} views</span>
         </div>
         <span>•</span>
         <span>{formattedDate}</span>
