@@ -1,8 +1,9 @@
 /**
  * Outreach Pages List Page
  * Lists all landing pages with management options
+ * Optimized with caching and performance enhancements
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -21,6 +22,14 @@ import {
   Send
 } from 'lucide-react';
 import * as pagesService from '../services/pagesService';
+
+// Cache for pages list to avoid re-fetching
+const pagesCache = {
+  data: null,
+  timestamp: null,
+  filters: null
+};
+const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes (shorter for list as it changes more frequently)
 
 // Status badge colors
 const STATUS_STYLES = {
@@ -53,22 +62,56 @@ export default function PagesListPage() {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   
-  const basePath = isAdmin ? '/admin' : '';
+  // Refs for tracking
+  const initialLoadRef = useRef(true);
+  const lastFetchRef = useRef(null);
   
-  // Load pages
-  const loadPages = useCallback(async () => {
+  const basePath = useMemo(() => isAdmin ? '/admin' : '', [isAdmin]);
+  
+  // Invalidate cache helper
+  const invalidateCache = useCallback(() => {
+    pagesCache.data = null;
+    pagesCache.timestamp = null;
+    pagesCache.filters = null;
+  }, []);
+  
+  // Load pages with caching
+  const loadPages = useCallback(async (force = false) => {
     try {
+      const filterKey = `${statusFilter}-${searchQuery}`;
+      
+      // Check if we can use cache
+      if (!force && 
+          pagesCache.data && 
+          pagesCache.timestamp && 
+          pagesCache.filters === filterKey &&
+          Date.now() - pagesCache.timestamp < CACHE_DURATION) {
+        setPages(pagesCache.data);
+        setLoading(false);
+        return;
+      }
+      
       setLoading(true);
       const data = await pagesService.getPages({
         status: statusFilter !== 'all' ? statusFilter : undefined,
         search: searchQuery || undefined
       });
-      setPages(data.pages || []);
+      
+      const pagesList = data.pages || [];
+      
+      // Update cache
+      pagesCache.data = pagesList;
+      pagesCache.timestamp = Date.now();
+      pagesCache.filters = filterKey;
+      
+      setPages(pagesList);
+      lastFetchRef.current = Date.now();
     } catch (err) {
       setError('Failed to load pages');
       console.error(err);
     } finally {
       setLoading(false);
+      initialLoadRef.current = false;
     }
   }, [statusFilter, searchQuery]);
   
@@ -88,60 +131,72 @@ export default function PagesListPage() {
   }, [pages, searchQuery, statusFilter]);
   
   // Actions
-  const handleCreatePage = (templateId) => {
+  const handleCreatePage = useCallback((templateId) => {
     setShowNewPageModal(false);
     navigate(`${basePath}/pages/new?template=${templateId}`);
-  };
+  }, [basePath, navigate]);
   
-  const handleEditPage = (pageId) => {
+  const handleEditPage = useCallback((pageId) => {
     navigate(`${basePath}/pages/${pageId}/edit`);
-  };
+  }, [basePath, navigate]);
   
-  const handleViewResponses = (pageId) => {
+  const handleViewResponses = useCallback((pageId) => {
     navigate(`${basePath}/pages/${pageId}/responses`);
-  };
+  }, [basePath, navigate]);
   
-  const handleDuplicatePage = async (pageId) => {
+  const handleDuplicatePage = useCallback(async (pageId) => {
     try {
       await pagesService.duplicatePage(pageId);
-      loadPages();
+      invalidateCache();
+      loadPages(true); // Force reload
     } catch (err) {
       console.error('Failed to duplicate:', err);
     }
     setMenuOpenId(null);
-  };
+  }, [loadPages, invalidateCache]);
   
-  const handleArchivePage = async (pageId) => {
+  const handleArchivePage = useCallback(async (pageId) => {
     try {
+      // Optimistic update
+      setPages(prev => prev.map(p => 
+        p.page_id === pageId ? { ...p, status: 'archived' } : p
+      ));
+      
       await pagesService.archivePage(pageId);
-      loadPages();
+      invalidateCache();
+      loadPages(true); // Force reload to sync with server
     } catch (err) {
       console.error('Failed to archive:', err);
+      loadPages(true); // Reload on error to restore correct state
     }
     setMenuOpenId(null);
-  };
+  }, [loadPages, invalidateCache]);
   
-  const handleDeletePage = async (pageId) => {
+  const handleDeletePage = useCallback(async (pageId) => {
     if (!confirm('Are you sure you want to delete this page? This cannot be undone.')) {
       return;
     }
     
     setDeletingId(pageId);
     try {
-      await pagesService.deletePage(pageId);
+      // Optimistic update
       setPages(prev => prev.filter(p => p.page_id !== pageId));
+      invalidateCache();
+      
+      await pagesService.deletePage(pageId);
     } catch (err) {
       console.error('Failed to delete:', err);
+      loadPages(true); // Reload on error to restore correct state
     } finally {
       setDeletingId(null);
     }
     setMenuOpenId(null);
-  };
+  }, [loadPages, invalidateCache]);
   
-  const copyPageLink = async (slug) => {
+  const copyPageLink = useCallback(async (slug) => {
     const url = `${window.location.origin}/p/${slug}`;
     await navigator.clipboard.writeText(url);
-  };
+  }, []);
   
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-6">
@@ -302,7 +357,8 @@ export default function PagesListPage() {
   );
 }
 
-function PageCard({ 
+// Memoized PageCard component to prevent unnecessary re-renders
+const PageCard = memo(({ 
   page, 
   basePath,
   menuOpen, 
@@ -314,12 +370,15 @@ function PageCard({
   onArchive, 
   onDelete,
   onCopyLink 
-}) {
-  const formattedDate = new Date(page.created_at).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
+}) => {
+  const formattedDate = useMemo(() => 
+    new Date(page.created_at).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    }),
+    [page.created_at]
+  );
   
   return (
     <div className={`bg-white rounded-xl p-6 shadow-sm border border-gray-100 relative ${deleting ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -419,7 +478,7 @@ function PageCard({
       <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
         <div className="flex items-center gap-1">
           <Eye className="w-4 h-4" />
-          <span>{((page.view_count || 0) / 2)} views</span>
+          <span>{Math.ceil((page.view_count || 0) / 2)} views</span>
         </div>
         <span>•</span>
         <span>{formattedDate}</span>
@@ -455,4 +514,5 @@ function PageCard({
       </div>
     </div>
   );
-}
+});
+PageCard.displayName = 'PageCard';

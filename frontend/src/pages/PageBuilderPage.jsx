@@ -1,8 +1,9 @@
 /**
  * Page Builder Page
  * Main interface for creating and editing outreach landing pages
+ * Optimized with caching, lazy loading, and performance enhancements
  */
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense, memo } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -26,14 +27,19 @@ const ComponentPalette = lazy(() => import('../components/pageBuilder/ComponentP
 const PropertyEditor = lazy(() => import('../components/pageBuilder/PropertyEditor'));
 const PagePreview = lazy(() => import('../components/pageBuilder/PagePreview'));
 
-// Loading skeleton for component panels
-const PanelSkeleton = () => (
+// Page cache to avoid re-fetching
+const pageCache = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// Loading skeleton for component panels - memoized to prevent re-renders
+const PanelSkeleton = memo(() => (
   <div className="animate-pulse space-y-3 p-4">
     {[1, 2, 3, 4].map((i) => (
       <div key={i} className="h-12 bg-gray-200 rounded-lg" />
     ))}
   </div>
-);
+));
+PanelSkeleton.displayName = 'PanelSkeleton';
 
 // Default component configurations
 const DEFAULT_COMPONENTS = {
@@ -43,7 +49,7 @@ const DEFAULT_COMPONENTS = {
       title: 'Welcome to Our Page',
       subtitle: 'Add a compelling subtitle here',
       backgroundType: 'gradient',
-      backgroundValue: 'from-sky-500 to-blue-600',
+      backgroundValue: { colors: ['#0ea5e9', '#2563eb'], direction: 'to-br' },
       textColor: 'white',
       alignment: 'center',
       showCta: true,
@@ -91,8 +97,8 @@ const DEFAULT_COMPONENTS = {
       description: 'Join thousands of satisfied customers.',
       buttonText: 'Contact Us',
       buttonUrl: '#form',
-      backgroundColor: 'bg-sky-50',
-      buttonColor: 'bg-sky-600'
+      backgroundColor: '#f0f9ff',
+      buttonColor: '#0284c7'
     }
   },
   video: {
@@ -160,6 +166,11 @@ export default function PageBuilderPage() {
   const [error, setError] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
   
+  // Refs for debouncing and tracking
+  const saveTimeoutRef = useRef(null);
+  const loadedPageIdRef = useRef(null);
+  const initialLoadRef = useRef(true);
+  
   // UI state
   const [selectedComponentIndex, setSelectedComponentIndex] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -167,13 +178,28 @@ export default function PageBuilderPage() {
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [copiedLink, setCopiedLink] = useState(false);
   
-  // Check if creating new page - either pageId is 'new' or path ends with /new
-  const isNewPage = pageId === 'new' || location.pathname.endsWith('/new');
-  const basePath = isAdmin ? '/admin' : '';
+  // Check if creating new page - memoized for performance
+  const isNewPage = useMemo(() => 
+    pageId === 'new' || location.pathname.endsWith('/new'),
+    [pageId, location.pathname]
+  );
+  const basePath = useMemo(() => isAdmin ? '/admin' : '', [isAdmin]);
   
-  // Load page data
+  // Load page data with caching
   useEffect(() => {
     const loadPage = async () => {
+      // Skip if we've already loaded this exact page
+      if (!initialLoadRef.current && loadedPageIdRef.current === pageId) {
+        return;
+      }
+      
+      // Reset on new page
+      if (loadedPageIdRef.current !== pageId) {
+        setLoading(true);
+        setError(null);
+        setHasChanges(false);
+      }
+      
       if (isNewPage) {
         // Initialize new page
         const templateType = searchParams.get('template');
@@ -203,14 +229,37 @@ export default function PageBuilderPage() {
           setComponents([]);
         }
         
+        loadedPageIdRef.current = pageId;
+        initialLoadRef.current = false;
         setLoading(false);
         return;
       }
       
       try {
+        // Check cache first
+        const cached = pageCache.get(pageId);
+        if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+          setPage(cached.data);
+          setComponents(cached.data.components || []);
+          loadedPageIdRef.current = pageId;
+          initialLoadRef.current = false;
+          setLoading(false);
+          return;
+        }
+        
+        // Fetch from server
         const data = await pagesService.getPage(pageId);
+        
+        // Cache the result
+        pageCache.set(pageId, {
+          data,
+          timestamp: Date.now()
+        });
+        
         setPage(data);
         setComponents(data.components || []);
+        loadedPageIdRef.current = pageId;
+        initialLoadRef.current = false;
       } catch (err) {
         setError('Failed to load page');
         console.error(err);
@@ -222,25 +271,47 @@ export default function PageBuilderPage() {
     loadPage();
   }, [pageId, isNewPage, searchParams]);
   
-  // Auto-save with debounce
-  const savePageDebounced = useCallback(async () => {
+  // Debounced auto-save effect
+  useEffect(() => {
     if (!hasChanges || isNewPage) return;
     
-    try {
-      setSaving(true);
-      const updated = await pagesService.updatePage(pageId, {
-        ...page,
-        components
-      });
-      // Update local state with server response (includes component IDs)
-      setPage(updated);
-      setComponents(updated.components || []);
-      setHasChanges(false);
-    } catch (err) {
-      console.error('Auto-save failed:', err);
-    } finally {
-      setSaving(false);
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
+    
+    // Set new timeout for auto-save (3 seconds after last change)
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        setSaving(true);
+        const updated = await pagesService.updatePage(pageId, {
+          ...page,
+          components
+        });
+        
+        // Update cache
+        pageCache.set(pageId, {
+          data: updated,
+          timestamp: Date.now()
+        });
+        
+        // Update local state with server response
+        setPage(updated);
+        setComponents(updated.components || []);
+        setHasChanges(false);
+      } catch (err) {
+        console.error('Auto-save failed:', err);
+      } finally {
+        setSaving(false);
+      }
+    }, 3000);
+    
+    // Cleanup
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, [hasChanges, isNewPage, page, components, pageId]);
   
   // Mark as changed when edits occur
@@ -302,27 +373,47 @@ export default function PageBuilderPage() {
     setDraggedIndex(null);
   };
   
-  // Save page
-  const savePage = async () => {
+  // Save page - memoized for stable reference
+  const savePage = useCallback(async () => {
     try {
       setSaving(true);
       setError(null);
+      
+      // Clear auto-save timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
       
       if (isNewPage) {
         const created = await pagesService.createPage({
           ...page,
           components
         });
-        // Update local state with server response (includes component IDs)
+        
+        // Update cache
+        pageCache.set(created.page_id, {
+          data: created,
+          timestamp: Date.now()
+        });
+        
+        // Update local state
         setPage(created);
         setComponents(created.components || []);
+        loadedPageIdRef.current = created.page_id;
         navigate(`${basePath}/pages/${created.page_id}/edit`, { replace: true });
       } else {
         const updated = await pagesService.updatePage(pageId, {
           ...page,
           components
         });
-        // Update local state with server response (includes new component IDs)
+        
+        // Update cache
+        pageCache.set(pageId, {
+          data: updated,
+          timestamp: Date.now()
+        });
+        
+        // Update local state
         setPage(updated);
         setComponents(updated.components || []);
       }
@@ -334,38 +425,60 @@ export default function PageBuilderPage() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [isNewPage, page, components, pageId, basePath, navigate]);
   
-  // Publish page
-  const publishPage = async () => {
+  // Publish page - memoized for stable reference
+  const publishPage = useCallback(async () => {
     try {
       setSaving(true);
       if (isNewPage) {
         // Save first then publish
         const created = await pagesService.createPage({ ...page, components });
         await pagesService.publishPage(created.page_id);
+        
+        // Update cache
+        const published = { ...created, status: 'published' };
+        pageCache.set(created.page_id, {
+          data: published,
+          timestamp: Date.now()
+        });
+        
+        setPage(published);
+        loadedPageIdRef.current = created.page_id;
         navigate(`${basePath}/pages/${created.page_id}/edit`, { replace: true });
       } else {
         await savePage();
         await pagesService.publishPage(pageId);
+        
+        // Optimistically update UI
+        const updated = { ...page, status: 'published' };
+        setPage(updated);
+        
+        // Update cache
+        pageCache.set(pageId, {
+          data: { ...updated, components },
+          timestamp: Date.now()
+        });
       }
-      setPage(prev => ({ ...prev, status: 'published' }));
     } catch (err) {
       setError('Failed to publish page');
     } finally {
       setSaving(false);
     }
-  };
+  }, [isNewPage, page, components, pageId, basePath, navigate, savePage]);
   
-  // Copy page link
-  const copyPageLink = async () => {
+  // Copy page link - memoized for stable reference
+  const copyPageLink = useCallback(async () => {
     if (!page?.slug) return;
     
     const url = `${window.location.origin}/p/${page.slug}`;
     await navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
-  };
+  }, [page?.slug]);
+  
+  // Memoize empty state check for performance
+  const isEmpty = useMemo(() => components.length === 0, [components.length]);
   
   if (loading) {
     return (
@@ -521,7 +634,7 @@ export default function PageBuilderPage() {
         {/* Canvas (Center) */}
         <main className="flex-1 overflow-y-auto p-8 bg-gray-50">
           <div className="max-w-3xl mx-auto">
-            {components.length === 0 ? (
+            {isEmpty ? (
               <div className="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center bg-white">
                 <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
                   <Plus className="w-8 h-8 text-gray-400" />

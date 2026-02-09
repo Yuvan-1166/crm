@@ -13,6 +13,8 @@ import {
   EyeOff,
   GripVertical
 } from 'lucide-react';
+import ColorPicker from './ColorPicker';
+import GradientPicker from './GradientPicker';
 
 // Form field types for the form builder
 const FIELD_TYPES = [
@@ -32,6 +34,12 @@ export default function PropertyEditor({ component, onChange, onClose }) {
   const updateConfig = (key, value) => {
     onChange({
       config: { ...config, [key]: value }
+    });
+  };
+  
+  const updateMultipleConfigs = (updates) => {
+    onChange({
+      config: { ...config, ...updates }
     });
   };
   
@@ -67,7 +75,7 @@ export default function PropertyEditor({ component, onChange, onClose }) {
       {/* Properties */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {type === 'hero' && (
-          <HeroEditor config={config} updateConfig={updateConfig} />
+          <HeroEditor config={config} updateConfig={updateConfig} updateMultipleConfigs={updateMultipleConfigs} />
         )}
         
         {type === 'text' && (
@@ -204,7 +212,33 @@ function Section({ title, children, defaultOpen = true }) {
    COMPONENT-SPECIFIC EDITORS
 ======================================== */
 
-function HeroEditor({ config, updateConfig }) {
+function HeroEditor({ config, updateConfig, updateMultipleConfigs }) {
+  // Handle background type change with appropriate default values
+  const handleBackgroundTypeChange = (newType) => {
+    const currentType = config.backgroundType;
+    let newValue = config.backgroundValue;
+    
+    // Set appropriate default values when switching types
+    if (newType === 'gradient' && currentType !== 'gradient') {
+      newValue = { colors: ['#0ea5e9', '#2563eb'], direction: 'to-br' };
+    } else if (newType === 'color' && currentType !== 'color') {
+      // Extract first color from gradient or use default
+      if (typeof config.backgroundValue === 'object' && config.backgroundValue?.colors) {
+        newValue = config.backgroundValue.colors[0];
+      } else {
+        newValue = '#ffffff';
+      }
+    } else if (newType === 'image' && currentType !== 'image') {
+      newValue = '';
+    }
+    
+    // Update both backgroundType and backgroundValue in a single call
+    updateMultipleConfigs({
+      backgroundType: newType,
+      backgroundValue: newValue
+    });
+  };
+  
   return (
     <>
       <Field label="Title">
@@ -240,7 +274,7 @@ function HeroEditor({ config, updateConfig }) {
         <Field label="Type">
           <Select
             value={config.backgroundType}
-            onChange={(v) => updateConfig('backgroundType', v)}
+            onChange={handleBackgroundTypeChange}
             options={[
               { value: 'gradient', label: 'Gradient' },
               { value: 'color', label: 'Solid Color' },
@@ -250,13 +284,19 @@ function HeroEditor({ config, updateConfig }) {
         </Field>
         
         {config.backgroundType === 'gradient' && (
-          <Field label="Gradient Class">
-            <TextInput
-              value={config.backgroundValue}
-              onChange={(v) => updateConfig('backgroundValue', v)}
-              placeholder="from-sky-500 to-blue-600"
-            />
-          </Field>
+          <GradientPicker
+            value={config.backgroundValue}
+            onChange={(v) => updateConfig('backgroundValue', v)}
+            label="Gradient"
+          />
+        )}
+        
+        {config.backgroundType === 'color' && (
+          <ColorPicker
+            value={config.backgroundValue}
+            onChange={(v) => updateConfig('backgroundValue', v)}
+            label="Background Color"
+          />
         )}
         
         {config.backgroundType === 'image' && (
@@ -611,13 +651,17 @@ function CTAEditor({ config, updateConfig }) {
         />
       </Field>
       
-      <Field label="Background Color">
-        <TextInput
-          value={config.backgroundColor}
-          onChange={(v) => updateConfig('backgroundColor', v)}
-          placeholder="bg-sky-50"
-        />
-      </Field>
+      <ColorPicker
+        value={config.backgroundColor}
+        onChange={(v) => updateConfig('backgroundColor', v)}
+        label="Background Color"
+      />
+      
+      <ColorPicker
+        value={config.buttonColor}
+        onChange={(v) => updateConfig('buttonColor', v)}
+        label="Button Color"
+      />
     </>
   );
 }
