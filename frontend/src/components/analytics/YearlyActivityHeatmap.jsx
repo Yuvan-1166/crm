@@ -110,13 +110,21 @@ function YearlyActivityHeatmap() {
     setIsDropdownOpen(false);
   }, []);
 
+  // Format date as YYYY-MM-DD in local timezone (avoids UTC shift bugs with toISOString)
+  const formatLocalDate = useCallback((d) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
+
   // Generate calendar data: actual calendar months with days at correct weekday positions
   const monthGroups = useMemo(() => {
     if (!dateRange.start || !dateRange.end) return [];
 
     const startDate = new Date(dateRange.start);
     const endDate = new Date(dateRange.end);
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = formatLocalDate(new Date());
 
     // Collect all months in the range
     const months = [];
@@ -142,7 +150,7 @@ function YearlyActivityHeatmap() {
             weekCol.push(null); // empty cell
           } else {
             const date = new Date(year, month, dayNumber);
-            const dateStr = date.toISOString().split('T')[0];
+            const dateStr = formatLocalDate(date);
             const isInRange = date >= startDate && date <= endDate;
             const dayData = activityData[dateStr];
             weekCol.push({
@@ -172,10 +180,10 @@ function YearlyActivityHeatmap() {
     }
 
     return months;
-  }, [dateRange, activityData]);
+  }, [dateRange, activityData, formatLocalDate]);
 
   const today = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = formatLocalDate(new Date());
     for (const group of monthGroups) {
       for (const week of group.grid) {
         const day = week.find(d => d && d.dateStr === todayStr);
@@ -289,18 +297,18 @@ function YearlyActivityHeatmap() {
       </div>
 
       {/* Heatmap Grid - Calendar months */}
-      <div className="overflow-x-auto pb-2">
-        <div className="flex items-end gap-[10px]">
+      <div className="pb-2">
+        <div className="flex items-end gap-[6px] w-full">
           {monthGroups.map((group) => (
-            <div key={group.key} className="flex flex-col">
+            <div key={group.key} className="flex flex-col flex-1 min-w-0">
               {/* Month grid: columns = weeks, rows = Sun–Sat */}
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(6, 13px)',
-                  gridTemplateRows: 'repeat(7, 13px)',
+                  gridTemplateColumns: 'repeat(6, 1fr)',
+                  gridTemplateRows: 'repeat(7, 1fr)',
                   gridAutoFlow: 'column',
-                  gap: '3px',
+                  gap: '2px',
                 }}
               >
                 {group.grid.map((week, weekIdx) =>
@@ -313,10 +321,10 @@ function YearlyActivityHeatmap() {
                         key={`${group.key}-${weekIdx}-${dayIdx}`}
                         className={`rounded-sm transition-all ${
                           day.isInRange
-                            ? `${getActivityColor(day.count, maxCount)} hover:ring-2 hover:ring-sky-300 hover:ring-offset-1 cursor-pointer ${day.isToday ? 'ring-2 ring-gray-400' : ''}`
+                            ? `${getActivityColor(day.count, maxCount)} hover:ring-2 hover:ring-sky-300 hover:ring-offset-1 cursor-pointer ${day.isToday ? 'ring-2 ring-gray-500 ring-offset-1' : ''}`
                             : 'bg-transparent'
                         }`}
-                        style={{ width: 13, height: 13 }}
+                        style={{ aspectRatio: '1 / 1', width: '100%' }}
                         onMouseEnter={() => day.isInRange && setHoveredDay(day)}
                         onMouseLeave={() => setHoveredDay(null)}
                       />
