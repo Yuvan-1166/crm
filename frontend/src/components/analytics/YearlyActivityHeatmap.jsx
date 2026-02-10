@@ -298,7 +298,7 @@ function YearlyActivityHeatmap() {
 
       {/* Heatmap Grid - Calendar months */}
       <div className="pb-2">
-        <div className="flex items-end gap-[6px] w-full">
+        <div className="flex items-end gap-[2px] w-full">
           {monthGroups.map((group) => (
             <div key={group.key} className="flex flex-col flex-1 min-w-0">
               {/* Month grid: columns = weeks, rows = Sun–Sat */}
@@ -321,7 +321,7 @@ function YearlyActivityHeatmap() {
                         key={`${group.key}-${weekIdx}-${dayIdx}`}
                         className={`rounded-sm transition-all ${
                           day.isInRange
-                            ? `${getActivityColor(day.count, maxCount)} hover:ring-2 hover:ring-sky-300 hover:ring-offset-1 cursor-pointer ${day.isToday ? 'ring-2 ring-gray-500 ring-offset-1' : ''}`
+                            ? `${getActivityColor(day.count, maxCount)} hover:ring-2 hover:ring-sky-300 hover:ring-offset-1 cursor-pointer ${day.isToday && !hoveredDay ? 'ring-2 ring-gray-500 ring-offset-1' : ''}`
                             : 'bg-transparent'
                         }`}
                         style={{ aspectRatio: '1 / 1', width: '100%' }}
