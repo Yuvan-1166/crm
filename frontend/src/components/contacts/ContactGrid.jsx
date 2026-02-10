@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Grid3X3, List, MessageSquare } from 'lucide-react';
+import { Plus, Search, Grid3X3, List, MessageSquare, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import ContactCard from './ContactCard';
 import ContactTable from './ContactTable';
+
+const ITEMS_PER_PAGE = 10;
 
 const ContactGrid = ({ 
   contacts = [], 
@@ -19,6 +21,7 @@ const ContactGrid = ({
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('table');
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Theme-aware colors - admin uses softer amber/warm tones
   const themeColors = isAdmin ? {
@@ -56,7 +59,30 @@ const ContactGrid = ({
     }
     
     setFilteredContacts(filtered);
+    setCurrentPage(1); // Reset to first page when filters change
   }, [contacts, activeTemperature, searchQuery]);
+
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(filteredContacts.length / ITEMS_PER_PAGE));
+  const paginatedContacts = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredContacts.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredContacts, currentPage]);
+
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let end = Math.min(totalPages, start + maxVisible - 1);
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
+  };
 
   const temperatures = [
     { 
@@ -240,33 +266,109 @@ const ContactGrid = ({
 
       {/* Contact Grid/List/Table */}
       {!loading && filteredContacts.length > 0 && (
-        viewMode === 'table' ? (
-          <ContactTable
-            contacts={filteredContacts}
-            onContactSelect={onContactSelect}
-            onEmailClick={onEmailClick}
-            onFollowupsClick={onFollowupsClick}
-            isAdmin={isAdmin}
-          />
-        ) : (
-          <div className={`${
-            viewMode === 'grid' 
-              ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-5' 
-              : 'flex flex-col gap-3'
-          }`}>
-            {filteredContacts.map((contact) => (
-              <ContactCard
-                key={contact.contact_id}
-                contact={contact}
-                onSelect={onContactSelect}
-                onEmailClick={onEmailClick}
-                onFollowupsClick={onFollowupsClick}
-                viewMode={viewMode}
-                isAdmin={isAdmin}
-              />
-            ))}
-          </div>
-        )
+        <>
+          {viewMode === 'table' ? (
+            <ContactTable
+              contacts={paginatedContacts}
+              onContactSelect={onContactSelect}
+              onEmailClick={onEmailClick}
+              onFollowupsClick={onFollowupsClick}
+              isAdmin={isAdmin}
+            />
+          ) : (
+            <div className={`${
+              viewMode === 'grid' 
+                ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-5' 
+                : 'flex flex-col gap-3'
+            }`}>
+              {paginatedContacts.map((contact) => (
+                <ContactCard
+                  key={contact.contact_id}
+                  contact={contact}
+                  onSelect={onContactSelect}
+                  onEmailClick={onEmailClick}
+                  onFollowupsClick={onFollowupsClick}
+                  viewMode={viewMode}
+                  isAdmin={isAdmin}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-6 py-4 mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <p className="text-sm text-gray-500">
+                Showing{' '}
+                <span className="font-semibold text-gray-700">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span>
+                {' '}–{' '}
+                <span className="font-semibold text-gray-700">{Math.min(currentPage * ITEMS_PER_PAGE, filteredContacts.length)}</span>
+                {' '}of{' '}
+                <span className="font-semibold text-gray-700">{filteredContacts.length}</span>{' '}contacts
+              </p>
+              <div className="flex items-center gap-1">
+                {/* First Page */}
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  title="First page"
+                >
+                  <ChevronsLeft className="w-4 h-4" />
+                </button>
+                {/* Previous Page */}
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  title="Previous page"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                {/* Page Numbers */}
+                {getPageNumbers()[0] > 1 && (
+                  <span className="px-1 text-gray-400 text-sm">…</span>
+                )}
+                {getPageNumbers().map((page) => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`min-w-[36px] h-9 rounded-lg text-sm font-medium transition-all ${
+                      currentPage === page
+                        ? `bg-gradient-to-r ${themeColors.primary} text-white shadow-md ${themeColors.shadow}`
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+                {getPageNumbers()[getPageNumbers().length - 1] < totalPages && (
+                  <span className="px-1 text-gray-400 text-sm">…</span>
+                )}
+
+                {/* Next Page */}
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  title="Next page"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                {/* Last Page */}
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  title="Last page"
+                >
+                  <ChevronsRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
