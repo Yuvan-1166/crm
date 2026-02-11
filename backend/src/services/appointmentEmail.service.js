@@ -299,9 +299,6 @@ ${description}
                     This is an automated appointment notification sent on behalf of ${employeeName}.<br>
                     Replies to this email will be directed to ${employeeName} for prompt assistance.
                   </p>
-                  <p style="margin: 12px 0 0; color: #9ca3af; font-size: 11px;">
-                    📧 Need immediate help? Reply to this email • 📅 Add to your calendar to stay organized
-                  </p>
                 </td>
               </tr>
               

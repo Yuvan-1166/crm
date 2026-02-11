@@ -118,6 +118,12 @@ export const generateMeetLink = async (taskId) => {
   return response.data;
 };
 
+// Resolve an overdue task with outcome (COMPLETED, NOT_CONNECTED, BAD_TIMING)
+export const resolveOverdueTask = async (taskId, resolution) => {
+  const response = await api.post(`/tasks/${taskId}/resolve`, { resolution });
+  return response.data;
+};
+
 export default {
   getCalendarTasks,
   getTodaysTasks,
@@ -136,4 +142,5 @@ export default {
   getAppointmentStatus,
   updateAppointmentStatus,
   generateMeetLink,
+  resolveOverdueTask,
 };

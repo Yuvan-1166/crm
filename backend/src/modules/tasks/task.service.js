@@ -1,6 +1,41 @@
 import * as taskRepo from "./task.repo.js";
 import * as gcalService from "../../services/googleCalendar.service.js";
 import * as appointmentEmailService from "../../services/appointmentEmail.service.js";
+import * as sessionService from "../sessions/session.service.js";
+
+// Map task_type → session mode_of_contact
+const TASK_TYPE_TO_MODE = {
+  CALL: "CALL",
+  EMAIL: "EMAIL",
+  MEETING: "MEETING",
+  DEMO: "DEMO",
+  FOLLOW_UP: "CALL",
+  DEADLINE: "NOTE",
+  REMINDER: "NOTE",
+  OTHER: "NOTE",
+};
+
+/**
+ * Fire-and-forget session logging.
+ * Automatically creates a session entry when a task with a contact is completed/resolved.
+ * Never throws — session logging failures must not block CRM operations.
+ */
+const logTaskAsSession = async (task, sessionStatus) => {
+  if (!task?.contact_id) return;
+  try {
+    await sessionService.createSession({
+      contactId: task.contact_id,
+      empId: task.emp_id,
+      stage: task.contact_status || null,
+      rating: sessionStatus === "CONNECTED" ? 7 : sessionStatus === "BAD_TIMING" ? 4 : 2,
+      sessionStatus,
+      modeOfContact: TASK_TYPE_TO_MODE[task.task_type] || "NOTE",
+      feedback: `[Auto-logged] Task: ${task.title}${sessionStatus !== "CONNECTED" ? " — " + sessionStatus.replace("_", " ").toLowerCase() : ""}`,
+    });
+  } catch (err) {
+    console.warn(`[Session Log] Failed for task ${task.task_id}:`, err.message);
+  }
+};
 
 /**
  * Fire-and-forget Google Calendar sync.
@@ -112,6 +147,11 @@ export const updateTask = async (taskId, companyId, empId, updates) => {
   const significantFields = ['contact_id', 'due_date', 'due_time', 'title', 'task_type'];
   const hasSignificantChange = Object.keys(updates).some(key => significantFields.includes(key));
   
+  // Fetch the task before update to check if status is changing to COMPLETED
+  const previousTask = updates.status === 'COMPLETED'
+    ? await taskRepo.getTaskById(companyId, empId, taskId)
+    : null;
+  
   const task = await taskRepo.updateTask(taskId, companyId, empId, updates);
   if (task) {
     // Fire-and-forget: sync changes to Google Calendar
@@ -120,6 +160,11 @@ export const updateTask = async (taskId, companyId, empId, updates) => {
     // Fire-and-forget: send updated appointment email if significant change
     if (hasSignificantChange && updates.status !== 'CANCELLED') {
       sendAppointmentNotification(taskId, empId);
+    }
+    
+    // Auto-log a session when task is marked COMPLETED (only for tasks with contacts)
+    if (updates.status === 'COMPLETED' && previousTask?.status !== 'COMPLETED') {
+      logTaskAsSession(task, "CONNECTED");
     }
   }
   return task;
@@ -146,6 +191,47 @@ export const getTaskStats = async (companyId, empId) => {
 --------------------------------------------------- */
 export const getTasksByContact = async (companyId, empId, contactId) => {
   return await taskRepo.getTasksByContact(companyId, empId, contactId);
+};
+
+/* ---------------------------------------------------
+   RESOLVE OVERDUE TASK
+   Allows resolving an overdue task with an outcome:
+   - COMPLETED → session_status = CONNECTED
+   - NOT_CONNECTED → session_status = NOT_CONNECTED
+   - BAD_TIMING → session_status = BAD_TIMING
+--------------------------------------------------- */
+export const resolveOverdueTask = async (taskId, companyId, empId, resolution) => {
+  const validResolutions = ['COMPLETED', 'NOT_CONNECTED', 'BAD_TIMING'];
+  if (!validResolutions.includes(resolution)) {
+    throw new Error('Invalid resolution. Must be COMPLETED, NOT_CONNECTED, or BAD_TIMING');
+  }
+  
+  const task = await taskRepo.getTaskById(companyId, empId, taskId);
+  if (!task) return null;
+  
+  // Only overdue tasks can be resolved this way
+  if (task.status !== 'OVERDUE') {
+    throw new Error('Only overdue tasks can be resolved');
+  }
+  
+  // Map resolution to task status and session status
+  const sessionStatus = resolution === 'COMPLETED' ? 'CONNECTED' : resolution;
+  const newTaskStatus = 'COMPLETED'; // All resolutions mark the task as done
+  
+  // Update task status
+  const updatedTask = await taskRepo.updateTask(taskId, companyId, empId, {
+    status: newTaskStatus,
+  });
+  
+  if (updatedTask) {
+    // Fire-and-forget: sync to Google Calendar
+    syncToCalendar("update", taskId, empId);
+    
+    // Log session with the appropriate status
+    logTaskAsSession(updatedTask, sessionStatus);
+  }
+  
+  return updatedTask;
 };
 
 /* ---------------------------------------------------

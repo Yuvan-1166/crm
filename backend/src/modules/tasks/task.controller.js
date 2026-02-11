@@ -278,6 +278,41 @@ export const getTasksByContact = async (req, res, next) => {
 };
 
 /**
+ * @desc   Resolve an overdue task with an outcome
+ * @route  POST /tasks/:taskId/resolve
+ * @access Employee
+ */
+export const resolveOverdueTask = async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const empId = req.user.empId;
+    const { taskId } = req.params;
+    const { resolution } = req.body;
+
+    if (!companyId) {
+      return res.status(400).json({ message: "Company ID is required" });
+    }
+
+    if (!resolution) {
+      return res.status(400).json({ message: "Resolution is required (COMPLETED, NOT_CONNECTED, or BAD_TIMING)" });
+    }
+
+    const task = await taskService.resolveOverdueTask(taskId, companyId, empId, resolution);
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    res.json(task);
+  } catch (error) {
+    if (error.message.includes('Invalid resolution') || error.message.includes('Only overdue')) {
+      return res.status(400).json({ message: error.message });
+    }
+    next(error);
+  }
+};
+
+/**
  * @desc   Generate Google Meet link for a task
  * @route  POST /tasks/:taskId/meet-link
  * @access Employee

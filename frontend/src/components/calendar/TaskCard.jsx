@@ -1,35 +1,25 @@
+import { useState } from "react";
 import { TASK_TYPES, PRIORITY_COLORS, STATUS_COLORS } from "./constants";
 import {
-  Calendar as CalendarIcon,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
   Clock,
-  Phone,
-  Mail,
-  Users,
-  Target,
-  Bell,
   CheckCircle,
-  AlertCircle,
   X,
-  Filter,
-  Zap,
-  CalendarDays,
-  ListTodo,
-  RefreshCw,
   Video,
+  PhoneOff,
+  TimerOff,
+  Loader2,
 } from "lucide-react";
 
 // Task types that send appointment emails and track responses
 const APPOINTMENT_TYPES = new Set(["CALL", "MEETING", "DEMO"]);
 
 // Task Card Component
-const TaskCard = ({ task, onToggleComplete, onEdit, onDelete, isAdmin = false }) => {
+const TaskCard = ({ task, onToggleComplete, onEdit, onDelete, onResolveOverdue, isAdmin = false }) => {
   const config = TASK_TYPES[task.task_type] || TASK_TYPES.OTHER;
   const Icon = config.icon;
   const isCompleted = task.status === "COMPLETED";
   const isOverdue = task.status === "OVERDUE";
+  const [resolving, setResolving] = useState(null); // tracks which resolution is in progress
   
   // Read appointment_status directly from task object (already in t.* from SQL)
   // No extra API call needed — eliminates N+1 problem
@@ -48,6 +38,16 @@ const TaskCard = ({ task, onToggleComplete, onEdit, onDelete, isAdmin = false })
     return `${hour12}:${minutes} ${ampm}`;
   };
 
+  const handleResolve = async (resolution) => {
+    if (!onResolveOverdue || resolving) return;
+    setResolving(resolution);
+    try {
+      await onResolveOverdue(task.task_id, resolution);
+    } finally {
+      setResolving(null);
+    }
+  };
+
   return (
     <div
       className={`
@@ -56,16 +56,18 @@ const TaskCard = ({ task, onToggleComplete, onEdit, onDelete, isAdmin = false })
       `}
     >
       <div className="flex items-start gap-3">
-        {/* Checkbox */}
-        <button
-          onClick={() => onToggleComplete(task)}
-          className={`
-            mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors
-            ${isCompleted ? "bg-emerald-500 border-emerald-500 text-white" : `border-gray-300 ${checkboxHoverColor}`}
-          `}
-        >
-          {isCompleted && <CheckCircle className="w-3 h-3" />}
-        </button>
+        {/* Checkbox — hidden for overdue tasks (use resolution buttons instead) */}
+        {!isOverdue && (
+          <button
+            onClick={() => onToggleComplete(task)}
+            className={`
+              mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors
+              ${isCompleted ? "bg-emerald-500 border-emerald-500 text-white" : `border-gray-300 ${checkboxHoverColor}`}
+            `}
+          >
+            {isCompleted && <CheckCircle className="w-3 h-3" />}
+          </button>
+        )}
 
         {/* Content */}
         <div className="flex-1 min-w-0">
@@ -137,6 +139,39 @@ const TaskCard = ({ task, onToggleComplete, onEdit, onDelete, isAdmin = false })
               {task.priority}
             </span>
           </div>
+
+          {/* Overdue Resolution Actions */}
+          {isOverdue && (
+            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-200">
+              <button
+                onClick={() => handleResolve("COMPLETED")}
+                disabled={!!resolving}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors disabled:opacity-50"
+                title="Mark as completed — contact was reached"
+              >
+                {resolving === "COMPLETED" ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                Completed
+              </button>
+              <button
+                onClick={() => handleResolve("NOT_CONNECTED")}
+                disabled={!!resolving}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors disabled:opacity-50"
+                title="Not connected — couldn't reach contact"
+              >
+                {resolving === "NOT_CONNECTED" ? <Loader2 className="w-3 h-3 animate-spin" /> : <PhoneOff className="w-3 h-3" />}
+                Not Connected
+              </button>
+              <button
+                onClick={() => handleResolve("BAD_TIMING")}
+                disabled={!!resolving}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 transition-colors disabled:opacity-50"
+                title="Bad timing — contact was busy"
+              >
+                {resolving === "BAD_TIMING" ? <Loader2 className="w-3 h-3 animate-spin" /> : <TimerOff className="w-3 h-3" />}
+                Bad Timing
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Actions */}

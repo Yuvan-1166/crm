@@ -30,6 +30,7 @@ import {
   deleteTask,
   getCalendarSyncStatus,
   syncAllToGoogleCalendar,
+  resolveOverdueTask,
 } from "../../services/taskService";
 import { getContacts } from "../../services/contactService";
 import { StatCard, TaskCard, TaskModal } from '../calendar';
@@ -543,6 +544,16 @@ const CalendarView = ({ isAdmin = false }) => {
     }
   };
 
+  // Handle overdue task resolution
+  const handleResolveOverdue = async (taskId, resolution) => {
+    try {
+      await resolveOverdueTask(taskId, resolution);
+      refreshAllData();
+    } catch (error) {
+      console.error("Failed to resolve overdue task:", error);
+    }
+  };
+
   // Handle task delete
   const handleDeleteTask = async (taskId) => {
     if (!confirm("Are you sure you want to delete this task?")) return;
@@ -913,6 +924,7 @@ const CalendarView = ({ isAdmin = false }) => {
                   key={task.task_id}
                   task={task}
                   onToggleComplete={handleToggleComplete}
+                  onResolveOverdue={handleResolveOverdue}
                   onEdit={setEditingTask}
                   onDelete={handleDeleteTask}
                   isAdmin={isAdmin}

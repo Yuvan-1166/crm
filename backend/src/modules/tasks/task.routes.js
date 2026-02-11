@@ -49,6 +49,11 @@ router.get("/stats", authenticateEmployee, taskController.getTaskStats);
 router.get("/contact/:contactId", authenticateEmployee, taskController.getTasksByContact);
 
 /* ---------------------------------------------------
+   RESOLVE OVERDUE TASK
+--------------------------------------------------- */
+router.post("/:taskId/resolve", authenticateEmployee, taskController.resolveOverdueTask);
+
+/* ---------------------------------------------------
    GENERATE GOOGLE MEET LINK
 --------------------------------------------------- */
 router.post("/:taskId/meet-link", authenticateEmployee, taskController.generateMeetLink);
