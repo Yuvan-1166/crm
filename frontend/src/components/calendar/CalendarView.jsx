@@ -532,22 +532,24 @@ const CalendarView = ({ isAdmin = false }) => {
     );
   };
 
-  // Handle task completion toggle
-  const handleToggleComplete = async (task) => {
+  // Handle task completion toggle (with optional rating/feedback for session logging)
+  const handleToggleComplete = async (task, rating = null, feedback = null) => {
     try {
       const newStatus = task.status === "COMPLETED" ? "PENDING" : "COMPLETED";
-      await updateTask(task.task_id, { status: newStatus });
-      // Refresh all data including stats when status changes
+      const updates = { status: newStatus };
+      if (newStatus === "COMPLETED" && rating != null) updates.session_rating = rating;
+      if (newStatus === "COMPLETED" && feedback) updates.session_feedback = feedback;
+      await updateTask(task.task_id, updates);
       refreshAllData();
     } catch (error) {
       console.error("Failed to update task:", error);
     }
   };
 
-  // Handle overdue task resolution
-  const handleResolveOverdue = async (taskId, resolution) => {
+  // Handle overdue task resolution (with optional rating/feedback)
+  const handleResolveOverdue = async (taskId, resolution, rating = null, feedback = null) => {
     try {
-      await resolveOverdueTask(taskId, resolution);
+      await resolveOverdueTask(taskId, resolution, rating, feedback);
       refreshAllData();
     } catch (error) {
       console.error("Failed to resolve overdue task:", error);

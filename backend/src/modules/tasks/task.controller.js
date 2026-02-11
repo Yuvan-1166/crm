@@ -287,7 +287,7 @@ export const resolveOverdueTask = async (req, res, next) => {
     const companyId = req.user.companyId;
     const empId = req.user.empId;
     const { taskId } = req.params;
-    const { resolution } = req.body;
+    const { resolution, rating, feedback } = req.body;
 
     if (!companyId) {
       return res.status(400).json({ message: "Company ID is required" });
@@ -297,7 +297,7 @@ export const resolveOverdueTask = async (req, res, next) => {
       return res.status(400).json({ message: "Resolution is required (COMPLETED, NOT_CONNECTED, or BAD_TIMING)" });
     }
 
-    const task = await taskService.resolveOverdueTask(taskId, companyId, empId, resolution);
+    const task = await taskService.resolveOverdueTask(taskId, companyId, empId, resolution, { rating, feedback });
 
     if (!task) {
       return res.status(404).json({ message: "Task not found" });

@@ -118,9 +118,9 @@ export const generateMeetLink = async (taskId) => {
   return response.data;
 };
 
-// Resolve an overdue task with outcome (COMPLETED, NOT_CONNECTED, BAD_TIMING)
-export const resolveOverdueTask = async (taskId, resolution) => {
-  const response = await api.post(`/tasks/${taskId}/resolve`, { resolution });
+// Resolve an overdue task with outcome (COMPLETED, NOT_CONNECTED, BAD_TIMING) + optional rating/feedback
+export const resolveOverdueTask = async (taskId, resolution, rating = null, feedback = null) => {
+  const response = await api.post(`/tasks/${taskId}/resolve`, { resolution, rating, feedback });
   return response.data;
 };
 
