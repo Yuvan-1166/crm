@@ -115,6 +115,7 @@ const buildAppointmentEmailHtml = ({
   priority,
   taskId,
   contactId,
+  googleMeetLink,
 }) => {
   const typeInfo = getTaskTypeInfo(taskType);
   const formattedDate = formatDate(dueDate);
@@ -210,6 +211,21 @@ ${description}
                     
                     ${priorityBadge}
                   </div>
+                  
+                  ${googleMeetLink ? `
+                  <!-- Google Meet Link -->
+                  <div style="background: linear-gradient(135deg, #1a73e815 0%, #1a73e808 100%); border-radius: 12px; padding: 20px; margin: 0 0 30px; border: 1px solid #1a73e830;">
+                    <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                      <span style="font-size: 22px; margin-right: 10px;">📹</span>
+                      <span style="color: #111827; font-size: 15px; font-weight: 600;">Join via Google Meet</span>
+                    </div>
+                    <a href="${googleMeetLink}" 
+                       style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1a73e8 0%, #1557b0 100%); color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; border-radius: 8px; box-shadow: 0 2px 8px rgba(26, 115, 232, 0.3);">
+                      🔗 Join Meeting
+                    </a>
+                    <p style="margin: 10px 0 0; color: #6b7280; font-size: 12px;">Or copy this link: <a href="${googleMeetLink}" style="color: #1a73e8; text-decoration: none;">${googleMeetLink}</a></p>
+                  </div>
+                  ` : ''}
                   
                   <!-- Action Buttons -->
                   <div style="margin: 0 0 32px;">
@@ -312,6 +328,7 @@ const buildAppointmentEmailText = ({
   durationMinutes,
   isAllDay,
   priority,
+  googleMeetLink,
 }) => {
   const typeInfo = getTaskTypeInfo(taskType);
   const formattedDate = formatDate(dueDate);
@@ -325,6 +342,10 @@ const buildAppointmentEmailText = ({
   text += `${"=".repeat(title.length)}\n\n`;
   text += `Date: ${formattedDate}\n`;
   text += `Time: ${isAllDay ? "All Day" : `${formattedTime} (${duration} minutes)`}\n`;
+
+  if (googleMeetLink) {
+    text += `\n📹 Google Meet Link: ${googleMeetLink}\n`;
+  }
 
   if (description) {
     text += `\nDetails:\n${description}\n`;
@@ -422,6 +443,7 @@ export const sendAppointmentEmail = async (taskId, empId) => {
       priority: task.priority,
       taskId: task.task_id,
       contactId: task.contact_id,
+      googleMeetLink: task.google_meet_link,
     });
 
     const textBody = buildAppointmentEmailText({
@@ -435,6 +457,7 @@ export const sendAppointmentEmail = async (taskId, empId) => {
       durationMinutes: task.duration_minutes,
       isAllDay: task.is_all_day,
       priority: task.priority,
+      googleMeetLink: task.google_meet_link,
     });
 
     // Send via Gmail API

@@ -18,6 +18,7 @@ import {
   CalendarDays,
   ListTodo,
   RefreshCw,
+  Video,
 } from "lucide-react";
 
 // Task types that send appointment emails and track responses
@@ -113,6 +114,19 @@ const TaskCard = ({ task, onToggleComplete, onEdit, onDelete, isAdmin = false })
                 <Clock className="w-3 h-3" />
                 {formatTime(task.due_time)}
               </span>
+            )}
+            {task.google_meet_link && (
+              <a
+                href={task.google_meet_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium"
+                title="Join Google Meet"
+              >
+                <Video className="w-3 h-3" />
+                Meet
+              </a>
             )}
             {task.contact_name && (
               <span className="truncate max-w-[120px]">

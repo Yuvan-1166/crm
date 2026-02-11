@@ -94,7 +94,10 @@ const getCalendarTimezone = async (calendar, empId) => {
  * @param {string|null} contactEmail
  * @param {string} userTz - IANA timezone of the user's Google Calendar
  */
-const buildEventResource = (task, contactEmail, userTz) => {
+// Task types eligible for Google Meet conference links
+const MEET_ELIGIBLE_TYPES = new Set(["MEETING", "DEMO"]);
+
+const buildEventResource = (task, contactEmail, userTz, { withConference = false } = {}) => {
   const dueDate = toDateString(task.due_date);
   const dueTime = task.due_time; // 'HH:MM:SS' or null
   const durationMin = task.duration_minutes || 30;
@@ -131,6 +134,16 @@ const buildEventResource = (task, contactEmail, userTz) => {
     status: task.status === "CANCELLED" ? "cancelled" : "confirmed",
   };
 
+  // Add Google Meet conference link for eligible task types
+  if (withConference && MEET_ELIGIBLE_TYPES.has(task.task_type)) {
+    event.conferenceData = {
+      createRequest: {
+        requestId: `crm-meet-${task.task_id}-${Date.now()}`,
+        conferenceSolutionKey: { type: "hangoutsMeet" },
+      },
+    };
+  }
+
   // Attach the related contact as an attendee when we have an email
   if (contactEmail) {
     event.attendees = [{ email: contactEmail, responseStatus: "needsAction" }];
@@ -162,7 +175,7 @@ const buildDescription = (task) => {
  * Stores the resulting event ID back into the tasks table.
  * Returns the event ID or null on failure / no connection.
  */
-export const createCalendarEvent = async (taskId, empId) => {
+export const createCalendarEvent = async (taskId, empId, { generateMeetLink = false } = {}) => {
   const calendar = await getCalendarClient(empId);
   if (!calendar) return null;
 
@@ -179,22 +192,32 @@ export const createCalendarEvent = async (taskId, empId) => {
 
   try {
     const userTz = await getCalendarTimezone(calendar, empId);
-    const event = buildEventResource(task, task.contact_email, userTz);
-    const res = await calendar.events.insert({
+    const withConference = generateMeetLink && MEET_ELIGIBLE_TYPES.has(task.task_type);
+    const event = buildEventResource(task, task.contact_email, userTz, { withConference });
+
+    const insertParams = {
       calendarId: "primary",
       resource: event,
       sendUpdates: "none", // Don't email attendees
-    });
+    };
+
+    // conferenceDataVersion=1 is required to create Google Meet links
+    if (withConference) {
+      insertParams.conferenceDataVersion = 1;
+    }
+
+    const res = await calendar.events.insert(insertParams);
 
     const eventId = res.data.id;
+    const meetLink = res.data.hangoutLink || null;
 
-    // Persist mapping
+    // Persist event ID and meet link
     await db.query(
-      "UPDATE tasks SET google_calendar_event_id = ? WHERE task_id = ?",
-      [eventId, taskId]
+      "UPDATE tasks SET google_calendar_event_id = ?, google_meet_link = ? WHERE task_id = ?",
+      [eventId, meetLink, taskId]
     );
 
-    return eventId;
+    return { eventId, meetLink };
   } catch (err) {
     console.error(`[GCal] Failed to create event for task ${taskId}:`, err.message);
     return null;
@@ -205,7 +228,7 @@ export const createCalendarEvent = async (taskId, empId) => {
  * Update an existing Google Calendar event when a CRM task changes.
  * If the event doesn't exist yet (e.g. sync was off), creates it instead.
  */
-export const updateCalendarEvent = async (taskId, empId) => {
+export const updateCalendarEvent = async (taskId, empId, { generateMeetLink = false } = {}) => {
   // Fetch task + existing event ID
   const [rows] = await db.query(
     `SELECT t.*, c.name AS contact_name, c.email AS contact_email, c.phone AS contact_phone
@@ -221,7 +244,7 @@ export const updateCalendarEvent = async (taskId, empId) => {
 
   // No event yet — create one instead
   if (!eventId) {
-    return createCalendarEvent(taskId, empId);
+    return createCalendarEvent(taskId, empId, { generateMeetLink });
   }
 
   const calendar = await getCalendarClient(empId);
@@ -229,19 +252,37 @@ export const updateCalendarEvent = async (taskId, empId) => {
 
   try {
     const userTz = await getCalendarTimezone(calendar, empId);
-    const event = buildEventResource(task, task.contact_email, userTz);
-    await calendar.events.update({
+    const withConference = generateMeetLink && MEET_ELIGIBLE_TYPES.has(task.task_type) && !task.google_meet_link;
+    const event = buildEventResource(task, task.contact_email, userTz, { withConference });
+
+    const updateParams = {
       calendarId: "primary",
       eventId,
       resource: event,
       sendUpdates: "none",
-    });
-    return eventId;
+    };
+
+    if (withConference) {
+      updateParams.conferenceDataVersion = 1;
+    }
+
+    const res = await calendar.events.update(updateParams);
+    const meetLink = res.data.hangoutLink || task.google_meet_link || null;
+
+    // Persist meet link if newly generated
+    if (meetLink && meetLink !== task.google_meet_link) {
+      await db.query(
+        "UPDATE tasks SET google_meet_link = ? WHERE task_id = ?",
+        [meetLink, taskId]
+      );
+    }
+
+    return { eventId, meetLink };
   } catch (err) {
     // If event was deleted on Google side, recreate it
     if (err.code === 404 || err.code === 410) {
-      await db.query("UPDATE tasks SET google_calendar_event_id = NULL WHERE task_id = ?", [taskId]);
-      return createCalendarEvent(taskId, empId);
+      await db.query("UPDATE tasks SET google_calendar_event_id = NULL, google_meet_link = NULL WHERE task_id = ?", [taskId]);
+      return createCalendarEvent(taskId, empId, { generateMeetLink });
     }
     console.error(`[GCal] Failed to update event for task ${taskId}:`, err.message);
     return null;
@@ -382,5 +423,82 @@ export const checkCalendarAccess = async (empId) => {
       return { connected: false, reason: "missing_scope" };
     }
     return { connected: false, reason: "auth_error" };
+  }
+};
+
+/**
+ * Generate a Google Meet link for an existing task.
+ * If the task already has a calendar event, patches it with conference data.
+ * If no event exists, creates one with conference data.
+ * 
+ * @param {number} taskId
+ * @param {number} empId
+ * @returns {{ meetLink: string, eventId: string } | null}
+ */
+export const generateMeetLink = async (taskId, empId) => {
+  // Fetch task
+  const [rows] = await db.query(
+    `SELECT t.*, c.name AS contact_name, c.email AS contact_email, c.phone AS contact_phone
+     FROM tasks t
+     LEFT JOIN contacts c ON c.contact_id = t.contact_id
+     WHERE t.task_id = ?`,
+    [taskId]
+  );
+  const task = rows[0];
+  if (!task) return null;
+
+  // Only MEETING and DEMO types are eligible
+  if (!MEET_ELIGIBLE_TYPES.has(task.task_type)) {
+    return null;
+  }
+
+  // If a meet link already exists, return it (idempotent)
+  if (task.google_meet_link) {
+    return { meetLink: task.google_meet_link, eventId: task.google_calendar_event_id };
+  }
+
+  const calendar = await getCalendarClient(empId);
+  if (!calendar) return null;
+
+  const eventId = task.google_calendar_event_id;
+
+  try {
+    let meetLink = null;
+
+    if (eventId) {
+      // Patch existing event with conference data
+      const res = await calendar.events.patch({
+        calendarId: "primary",
+        eventId,
+        conferenceDataVersion: 1,
+        resource: {
+          conferenceData: {
+            createRequest: {
+              requestId: `crm-meet-${taskId}-${Date.now()}`,
+              conferenceSolutionKey: { type: "hangoutsMeet" },
+            },
+          },
+        },
+        sendUpdates: "none",
+      });
+      meetLink = res.data.hangoutLink || null;
+    } else {
+      // No calendar event yet — create one with conference data
+      const result = await createCalendarEvent(taskId, empId, { generateMeetLink: true });
+      meetLink = result?.meetLink || null;
+    }
+
+    // Persist meet link
+    if (meetLink) {
+      await db.query(
+        "UPDATE tasks SET google_meet_link = ? WHERE task_id = ?",
+        [meetLink, taskId]
+      );
+    }
+
+    return { meetLink, eventId: eventId || (await db.query("SELECT google_calendar_event_id FROM tasks WHERE task_id = ?", [taskId]))?.[0]?.[0]?.google_calendar_event_id };
+  } catch (err) {
+    console.error(`[GCal] Failed to generate Meet link for task ${taskId}:`, err.message);
+    return null;
   }
 };

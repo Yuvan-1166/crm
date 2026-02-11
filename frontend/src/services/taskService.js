@@ -112,6 +112,12 @@ export const updateAppointmentStatus = async (taskId, status, notes = null) => {
   return response.data;
 };
 
+// Generate Google Meet link for a task
+export const generateMeetLink = async (taskId) => {
+  const response = await api.post(`/tasks/${taskId}/meet-link`);
+  return response.data;
+};
+
 export default {
   getCalendarTasks,
   getTodaysTasks,
@@ -129,4 +135,5 @@ export default {
   syncTaskToGoogleCalendar,
   getAppointmentStatus,
   updateAppointmentStatus,
+  generateMeetLink,
 };

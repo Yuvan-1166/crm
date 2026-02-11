@@ -6,14 +6,14 @@ import * as appointmentEmailService from "../../services/appointmentEmail.servic
  * Fire-and-forget Google Calendar sync.
  * Never throws — calendar failures must not block CRM operations.
  */
-const syncToCalendar = async (action, taskId, empId) => {
+const syncToCalendar = async (action, taskId, empId, options = {}) => {
   try {
     switch (action) {
       case "create":
-        await gcalService.createCalendarEvent(taskId, empId);
+        await gcalService.createCalendarEvent(taskId, empId, options);
         break;
       case "update":
-        await gcalService.updateCalendarEvent(taskId, empId);
+        await gcalService.updateCalendarEvent(taskId, empId, options);
         break;
       case "delete":
         await gcalService.deleteCalendarEvent(taskId, empId);
@@ -84,11 +84,22 @@ export const getTaskById = async (companyId, empId, taskId) => {
 export const createTask = async (taskData) => {
   const task = await taskRepo.createTask(taskData);
   
-  // Fire-and-forget: sync to Google Calendar
-  syncToCalendar("create", task.task_id, taskData.emp_id);
-  
-  // Fire-and-forget: send appointment email to contact
-  sendAppointmentNotification(task.task_id, taskData.emp_id);
+  if (taskData.generate_meet_link) {
+    // When generating a Meet link, await calendar sync first so the
+    // appointment email includes the Meet link right away.
+    try {
+      await gcalService.createCalendarEvent(task.task_id, taskData.emp_id, { generateMeetLink: true });
+    } catch (err) {
+      console.warn(`[GCal Sync] create failed for task ${task.task_id}:`, err.message);
+    }
+    // Now send email (will include the meet link)
+    sendAppointmentNotification(task.task_id, taskData.emp_id);
+  } else {
+    // Fire-and-forget: sync to Google Calendar
+    syncToCalendar("create", task.task_id, taskData.emp_id);
+    // Fire-and-forget: send appointment email to contact
+    sendAppointmentNotification(task.task_id, taskData.emp_id);
+  }
   
   return task;
 };
@@ -135,4 +146,23 @@ export const getTaskStats = async (companyId, empId) => {
 --------------------------------------------------- */
 export const getTasksByContact = async (companyId, empId, contactId) => {
   return await taskRepo.getTasksByContact(companyId, empId, contactId);
+};
+
+/* ---------------------------------------------------
+   GENERATE GOOGLE MEET LINK
+--------------------------------------------------- */
+export const generateMeetLink = async (taskId, companyId, empId) => {
+  // Verify task ownership
+  const task = await taskRepo.getTaskById(companyId, empId, taskId);
+  if (!task) return null;
+
+  const result = await gcalService.generateMeetLink(taskId, empId);
+  if (!result?.meetLink) {
+    return null;
+  }
+
+  // Re-send appointment email now that meet link is available
+  sendAppointmentNotification(taskId, empId);
+
+  return result;
 };
