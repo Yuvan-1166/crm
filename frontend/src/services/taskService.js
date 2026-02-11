@@ -1,7 +1,7 @@
 import api from "./api";
 
 /**
- * Task/Calendar Service - Handles all task and calendar API calls
+ * Task/Calendar Service - Handles all task, calendar, and Google Calendar sync API calls
  */
 
 // Get calendar tasks for a date range
@@ -74,6 +74,28 @@ export const getTasksByContact = async (contactId) => {
   return response.data;
 };
 
+/* ---------------------------------------------------
+   GOOGLE CALENDAR SYNC
+--------------------------------------------------- */
+
+// Check Google Calendar connection status
+export const getCalendarSyncStatus = async () => {
+  const response = await api.get("/tasks/calendar-sync/status");
+  return response.data;
+};
+
+// Sync all tasks to Google Calendar
+export const syncAllToGoogleCalendar = async () => {
+  const response = await api.post("/tasks/calendar-sync/sync-all");
+  return response.data;
+};
+
+// Sync a single task to Google Calendar
+export const syncTaskToGoogleCalendar = async (taskId) => {
+  const response = await api.post(`/tasks/calendar-sync/${taskId}`);
+  return response.data;
+};
+
 export default {
   getCalendarTasks,
   getTodaysTasks,
@@ -86,4 +108,7 @@ export default {
   updateTask,
   deleteTask,
   getTasksByContact,
+  getCalendarSyncStatus,
+  syncAllToGoogleCalendar,
+  syncTaskToGoogleCalendar,
 };

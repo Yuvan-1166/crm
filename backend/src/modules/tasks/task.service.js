@@ -1,4 +1,27 @@
 import * as taskRepo from "./task.repo.js";
+import * as gcalService from "../../services/googleCalendar.service.js";
+
+/**
+ * Fire-and-forget Google Calendar sync.
+ * Never throws — calendar failures must not block CRM operations.
+ */
+const syncToCalendar = async (action, taskId, empId) => {
+  try {
+    switch (action) {
+      case "create":
+        await gcalService.createCalendarEvent(taskId, empId);
+        break;
+      case "update":
+        await gcalService.updateCalendarEvent(taskId, empId);
+        break;
+      case "delete":
+        await gcalService.deleteCalendarEvent(taskId, empId);
+        break;
+    }
+  } catch (err) {
+    console.warn(`[GCal Sync] ${action} failed for task ${taskId}:`, err.message);
+  }
+};
 
 /* ---------------------------------------------------
    GET CALENDAR DATA
@@ -46,20 +69,30 @@ export const getTaskById = async (companyId, empId, taskId) => {
    CREATE TASK
 --------------------------------------------------- */
 export const createTask = async (taskData) => {
-  return await taskRepo.createTask(taskData);
+  const task = await taskRepo.createTask(taskData);
+  // Fire-and-forget: sync to Google Calendar
+  syncToCalendar("create", task.task_id, taskData.emp_id);
+  return task;
 };
 
 /* ---------------------------------------------------
    UPDATE TASK
 --------------------------------------------------- */
 export const updateTask = async (taskId, companyId, empId, updates) => {
-  return await taskRepo.updateTask(taskId, companyId, empId, updates);
+  const task = await taskRepo.updateTask(taskId, companyId, empId, updates);
+  if (task) {
+    // Fire-and-forget: sync changes to Google Calendar
+    syncToCalendar("update", taskId, empId);
+  }
+  return task;
 };
 
 /* ---------------------------------------------------
    DELETE TASK
 --------------------------------------------------- */
 export const deleteTask = async (taskId, companyId, empId) => {
+  // Delete from Google Calendar BEFORE removing from DB (need the event ID)
+  await syncToCalendar("delete", taskId, empId);
   return await taskRepo.deleteTask(taskId, companyId, empId);
 };
 

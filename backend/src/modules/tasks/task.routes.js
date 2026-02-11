@@ -1,8 +1,17 @@
 import { Router } from "express";
 import * as taskController from "./task.controller.js";
+import * as calendarSyncController from "./calendarSync.controller.js";
 import { authenticateEmployee } from "../../middlewares/auth.middleware.js";
 
 const router = Router();
+
+/* ---------------------------------------------------
+   GOOGLE CALENDAR SYNC ROUTES
+   (Must be before /:taskId to avoid param conflicts)
+--------------------------------------------------- */
+router.get("/calendar-sync/status", authenticateEmployee, calendarSyncController.getSyncStatus);
+router.post("/calendar-sync/sync-all", authenticateEmployee, calendarSyncController.syncAllTasks);
+router.post("/calendar-sync/:taskId", authenticateEmployee, calendarSyncController.syncSingleTask);
 
 /* ---------------------------------------------------
    GET CALENDAR TASKS (Date Range)
