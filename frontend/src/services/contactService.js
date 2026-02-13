@@ -108,3 +108,49 @@ export const moveToDormant = async (contactId, reason = null) => {
   });
   return response.data;
 };
+
+/* ---------------------------------------------------
+   AVAILABILITY MANAGEMENT
+--------------------------------------------------- */
+
+// Get all availability windows for a contact
+export const getContactAvailability = async (contactId) => {
+  const response = await api.get(`/contacts/${contactId}/availability`);
+  return response.data;
+};
+
+// Get today's availability for a contact
+export const getTodayAvailability = async (contactId) => {
+  const response = await api.get(`/contacts/${contactId}/availability/today`);
+  return response.data;
+};
+
+// Add a new availability window
+export const createAvailabilityWindow = async (contactId, windowData) => {
+  const response = await api.post(`/contacts/${contactId}/availability`, windowData);
+  return response.data;
+};
+
+// Update an availability window
+export const updateAvailabilityWindow = async (contactId, availabilityId, updates) => {
+  const response = await api.put(`/contacts/${contactId}/availability/${availabilityId}`, updates);
+  return response.data;
+};
+
+// Delete an availability window
+export const deleteAvailabilityWindow = async (contactId, availabilityId) => {
+  const response = await api.delete(`/contacts/${contactId}/availability/${availabilityId}`);
+  return response.data;
+};
+
+// Set complete weekly schedule (replaces all existing)
+export const setWeeklySchedule = async (contactId, schedule) => {
+  const response = await api.post(`/contacts/${contactId}/availability/weekly`, { schedule });
+  return response.data;
+};
+
+// Set default business hours (Mon-Fri 9-5)
+export const setDefaultBusinessHours = async (contactId, timezone = 'UTC') => {
+  const response = await api.post(`/contacts/${contactId}/availability/default`, { timezone });
+  return response.data;
+};

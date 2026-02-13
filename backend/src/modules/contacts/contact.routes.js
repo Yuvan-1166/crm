@@ -2,6 +2,7 @@ import { Router } from "express";
 import * as contactController from "./contact.controller.js";
 import { authenticateEmployee } from "../../middlewares/auth.middleware.js";
 import { requireAdmin } from "../../middlewares/role.middleware.js";
+import availabilityRoutes from "./availability.routes.js";
 
 const router = Router();
 
@@ -130,5 +131,12 @@ router.patch(
   authenticateEmployee,
   contactController.moveToDormant
 );
+
+/* ---------------------------------------------------
+   AVAILABILITY MANAGEMENT
+--------------------------------------------------- */
+
+// Nested routes for contact availability
+router.use("/:contactId/availability", availabilityRoutes);
 
 export default router;
