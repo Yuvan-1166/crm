@@ -1,8 +1,9 @@
 import { memo, useRef, useEffect, useState, useCallback } from 'react';
-import { Bell, Menu, ChevronDown, Search } from 'lucide-react';
+import { Bell, Menu, ChevronDown, Search, Clock, CheckCircle2, AlertCircle, X } from 'lucide-react';
 import Profile from '../layout/Profile';
 import GlobalSearch from '../layout/GlobalSearch';
 import { getInitials, getPageTitle } from './utils/dashboardHelpers';
+import { getTodaysTasks } from '../../services/taskService';
 
 /**
  * Mobile Search Modal
@@ -32,14 +33,179 @@ const MobileSearchModal = memo(({ isOpen, onClose }) => {
 MobileSearchModal.displayName = 'MobileSearchModal';
 
 /**
- * Notification bell component
+ * Notification bell component with today's tasks
  */
-const NotificationBell = memo(() => (
-  <button className="relative p-2 hover:bg-gray-100 rounded-xl transition-colors">
-    <Bell className="w-5 h-5 text-gray-600" />
-    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-  </button>
-));
+const NotificationBell = memo(() => {
+  const [tasks, setTasks] = useState([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const bellRef = useRef(null);
+
+  // Fetch today's tasks
+  const fetchTodaysTasks = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await getTodaysTasks();
+      setTasks(Array.isArray(data) ? data : data?.tasks || []);
+    } catch (error) {
+      console.error('Failed to fetch today\'s tasks:', error);
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch tasks on mount and set hourly interval
+  useEffect(() => {
+    fetchTodaysTasks();
+    const interval = setInterval(fetchTodaysTasks, 60 * 60 * 1000); // Hourly
+    return () => clearInterval(interval);
+  }, [fetchTodaysTasks]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (bellRef.current && !bellRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  const taskCount = tasks.length;
+  const pendingCount = tasks.filter(t => t.status !== 'COMPLETED' && t.status !== 'CANCELLED').length;
+
+  const getTaskIcon = (taskType) => {
+    switch (taskType?.toUpperCase()) {
+      case 'APPOINTMENT':
+        return <Clock className="w-4 h-4 text-blue-500" />;
+      case 'CALL':
+        return <AlertCircle className="w-4 h-4 text-orange-500" />;
+      case 'FOLLOW_UP':
+      case 'FOLLOWUP':
+        return <AlertCircle className="w-4 h-4 text-purple-500" />;
+      default:
+        return <CheckCircle2 className="w-4 h-4 text-gray-500" />;
+    }
+  };
+
+  const formatTime = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const date = new Date(dateStr);
+      
+      // Validate the date
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date parsed:', dateStr);
+        return '';
+      }
+      
+      // Manually format time to avoid timezone parsing issues
+      let hours = date.getHours();
+      const minutes = date.getMinutes();
+      const meridiem = hours >= 12 ? 'PM' : 'AM';
+      
+      // Convert to 12-hour format
+      hours = hours % 12 || 12;
+      
+      const minutesStr = String(minutes).padStart(2, '0');
+      return `${hours}:${minutesStr} ${meridiem}`;
+    } catch (error) {
+      console.error('Error formatting time:', error, dateStr);
+      return '';
+    }
+  };
+
+  return (
+    <div className="relative" ref={bellRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="relative p-2 hover:bg-gray-100 rounded-xl transition-colors"
+        aria-label="View today's tasks"
+      >
+        <Bell className="w-5 h-5 text-gray-600" />
+        {pendingCount > 0 && (
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+        )}
+      </button>
+
+      {/* Notification Dropdown */}
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-gray-200 z-50 max-h-96 overflow-hidden flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-100">
+            <div>
+              <h3 className="font-semibold text-gray-900">Today's Tasks</h3>
+              <p className="text-xs text-gray-500">{taskCount} task{taskCount !== 1 ? 's' : ''}</p>
+            </div>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
+
+          {/* Tasks List */}
+          <div className="overflow-y-auto flex-1">
+            {loading ? (
+              <div className="p-4 text-center text-gray-500 text-sm">Loading tasks...</div>
+            ) : tasks.length === 0 ? (
+              <div className="p-4 text-center text-gray-500 text-sm">No tasks for today</div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {tasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className={`p-3 hover:bg-gray-50 transition-colors ${
+                      task.status === 'COMPLETED' ? 'opacity-60' : ''
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="mt-1">{getTaskIcon(task.task_type)}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{task.title}</p>
+                        {task.contact_name && (
+                          <p className="text-xs text-gray-500 truncate">📌 {task.contact_name}</p>
+                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                          {task.due_date && (
+                            <span className="text-xs text-gray-500">{formatTime(task.due_date)}</span>
+                          )}
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            task.status === 'COMPLETED'
+                              ? 'bg-green-100 text-green-700'
+                              : task.status === 'CANCELLED'
+                              ? 'bg-gray-100 text-gray-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {task.status || 'PENDING'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          {tasks.length > 0 && (
+            <div className="p-3 border-t border-gray-100 bg-gray-50">
+              <button className="w-full text-sm text-blue-600 hover:text-blue-700 font-medium">
+                View all tasks in calendar →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
 
 NotificationBell.displayName = 'NotificationBell';
 
