@@ -34,7 +34,15 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { getSessionsByContact } from '../../services/sessionService';
-import { getContactFinancials } from '../../services/contactService';
+import { 
+  getContactFinancials, 
+  getContactAvailability,
+  createAvailabilityWindow,
+  deleteAvailabilityWindow,
+  setDefaultBusinessHours,
+  setWeeklySchedule
+} from '../../services/contactService';
+import { getTasksByContact } from '../../services/taskService';
 import { useCurrency } from '../../context/CurrencyContext';
 
 const ContactDetail = ({ 
@@ -54,6 +62,11 @@ const ContactDetail = ({
   const [copiedField, setCopiedField] = useState(null);
   const [financials, setFinancials] = useState(null);
   const [financialsLoading, setFinancialsLoading] = useState(false);
+  const [tasks, setTasks] = useState([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [availability, setAvailability] = useState(null);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [showAvailabilityEditor, setShowAvailabilityEditor] = useState(false);
   const sidebarRef = useRef(null);
   
   // Use centralized currency formatting
@@ -66,6 +79,8 @@ const ContactDetail = ({
     if (contact) {
       fetchSessions();
       fetchFinancials();
+      fetchTasks();
+      fetchAvailability();
     }
   }, [contact]);
 
@@ -92,6 +107,54 @@ const ContactDetail = ({
       console.error('Error fetching financials:', error);
     } finally {
       setFinancialsLoading(false);
+    }
+  };
+
+  const fetchTasks = async () => {
+    if (!contact?.contact_id) return;
+    try {
+      setTasksLoading(true);
+      const data = await getTasksByContact(contact.contact_id);
+      setTasks(data || []);
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+    } finally {
+      setTasksLoading(false);
+    }
+  };
+
+  const fetchAvailability = async () => {
+    if (!contact?.contact_id) return;
+    try {
+      setAvailabilityLoading(true);
+      const data = await getContactAvailability(contact.contact_id);
+      setAvailability(data);
+    } catch (error) {
+      console.error('Error fetching availability:', error);
+      setAvailability(null);
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  };
+
+  const handleSetDefaultHours = async () => {
+    try {
+      await setDefaultBusinessHours(contact.contact_id, Intl.DateTimeFormat().resolvedOptions().timeZone);
+      await fetchAvailability();
+    } catch (error) {
+      console.error('Error setting default hours:', error);
+      alert('Failed to set default hours');
+    }
+  };
+
+  const handleDeleteWindow = async (availabilityId) => {
+    if (!confirm('Delete this availability window?')) return;
+    try {
+      await deleteAvailabilityWindow(contact.contact_id, availabilityId);
+      await fetchAvailability();
+    } catch (error) {
+      console.error('Error deleting window:', error);
+      alert('Failed to delete window');
     }
   };
 
@@ -254,6 +317,155 @@ const ContactDetail = ({
   // Currency formatting now uses the centralized useCurrency hook
   const formatCurrency = formatCompact;
   const formatFullCurrency = (value) => formatFull(value, 0);
+
+  // Format time from HH:MM:SS to 12-hour format
+  const formatTime = (timeStr) => {
+    if (!timeStr) return '';
+    try {
+      const timeParts = timeStr.split(':');
+      if (timeParts.length < 2) return '';
+      
+      let hours = parseInt(timeParts[0], 10);
+      const minutes = parseInt(timeParts[1], 10);
+      
+      if (isNaN(hours) || isNaN(minutes)) return '';
+      
+      const meridiem = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      
+      return `${hours}:${String(minutes).padStart(2, '0')} ${meridiem}`;
+    } catch {
+      return '';
+    }
+  };
+
+  // Calculate end time from start time + duration
+  const calculateEndTime = (startTime, durationMinutes) => {
+    if (!startTime) return null;
+    try {
+      const timeParts = startTime.split(':');
+      if (timeParts.length < 2) return null;
+      
+      const hours = parseInt(timeParts[0], 10);
+      const minutes = parseInt(timeParts[1], 10);
+      
+      if (isNaN(hours) || isNaN(minutes)) return null;
+      
+      const totalMinutes = hours * 60 + minutes + (durationMinutes || 30);
+      const endHours = Math.floor(totalMinutes / 60) % 24;
+      const endMinutes = totalMinutes % 60;
+      
+      return `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`;
+    } catch {
+      return null;
+    }
+  };
+
+  // Filter tasks for today and future
+  const upcomingTasks = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return tasks.filter(task => task.due_date >= today)
+      .sort((a, b) => {
+        if (a.due_date !== b.due_date) return a.due_date.localeCompare(b.due_date);
+        if (a.due_time && b.due_time) return a.due_time.localeCompare(b.due_time);
+        return 0;
+      });
+  }, [tasks]);
+
+  // Calculate time difference in minutes
+  const calculateTimeDiff = (startTime, endTime) => {
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    return (endH * 60 + endM) - (startH * 60 + startM);
+  };
+
+  // Calculate availability windows (free time slots)
+  const calculateAvailability = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todaysTasks = tasks
+      .filter(task => task.due_date === today && task.status !== 'COMPLETED' && task.status !== 'CANCELLED')
+      .sort((a, b) => (a.due_time || '').localeCompare(b.due_time || ''));
+
+    // Get today's day of week (lowercase to match database enum)
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const todayDayOfWeek = days[new Date().getDay()];
+
+    // Get availability windows for today from stored data
+    const todayAvailabilityWindows = availability?.raw_windows?.filter(
+      w => w.day_of_week === todayDayOfWeek && w.is_active
+    ) || [];
+
+    // If no availability windows are set, use default business hours
+    let businessWindows = todayAvailabilityWindows.length > 0
+      ? todayAvailabilityWindows.map(w => ({ start: w.start_time, end: w.end_time }))
+      : [{ start: '09:00:00', end: '18:00:00' }]; // Default 9 AM - 6 PM
+    
+    const availableSlots = [];
+    
+    businessWindows.forEach(businessWindow => {
+      const businessStart = businessWindow.start;
+      const businessEnd = businessWindow.end;
+
+      if (todaysTasks.length === 0) {
+        // Entire window is available
+        const duration = calculateTimeDiff(businessStart, businessEnd);
+        availableSlots.push({
+          start: businessStart,
+          end: businessEnd,
+          duration,
+        });
+      } else {
+        let currentTime = businessStart;
+        
+        // Filter tasks that fall within this business window
+        const tasksInWindow = todaysTasks.filter(task => {
+          return task.due_time >= businessStart && task.due_time < businessEnd;
+        });
+
+        tasksInWindow.forEach((task, index) => {
+          const taskStart = task.due_time;
+          const taskEnd = calculateEndTime(taskStart, task.duration_minutes || 30);
+          
+          if (taskStart && taskStart > currentTime) {
+            // There's a gap - customer is available
+            const gapMinutes = calculateTimeDiff(currentTime, taskStart);
+            if (gapMinutes >= 15) { // Only show gaps of 15+ minutes
+              availableSlots.push({
+                start: currentTime,
+                end: taskStart,
+                duration: gapMinutes,
+              });
+            }
+          }
+          
+          // Move current time to end of this task
+          if (taskEnd) {
+            currentTime = taskEnd;
+          }
+        });
+        
+        // Check if there's time after the last task in this window
+        if (currentTime < businessEnd) {
+          const gapMinutes = calculateTimeDiff(currentTime, businessEnd);
+          if (gapMinutes >= 15) {
+            availableSlots.push({
+              start: currentTime,
+              end: businessEnd,
+              duration: gapMinutes,
+            });
+          }
+        }
+      }
+    });
+    
+    return {
+      todaysTasks,
+      availableSlots,
+      totalAvailableMinutes: availableSlots.reduce((sum, slot) => sum + slot.duration, 0),
+      totalBusyMinutes: todaysTasks.reduce((sum, task) => sum + (task.duration_minutes || 30), 0),
+      hasStoredAvailability: todayAvailabilityWindows.length > 0,
+    };
+  }, [tasks, availability]);
 
   // Determine if contact should show financial data (OPPORTUNITY, CUSTOMER, EVANGELIST)
   const showFinancials = useMemo(() => {
@@ -477,6 +689,7 @@ const ContactDetail = ({
               {[
                 { id: 'overview', label: 'Overview' },
                 { id: 'activity', label: 'Activity' },
+                { id: 'availability', label: 'Availability' },
                 ...(showFinancials ? [{ id: 'financials', label: 'Deals' }] : []),
               ].map((tab) => (
                 <button
@@ -765,6 +978,261 @@ const ContactDetail = ({
               )}
             </div>
           )}
+          {/* Availability Tab */}
+          {activeTab === 'availability' && (
+            <div className="px-5 pb-6 space-y-4">
+              {tasksLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-sky-500 border-t-transparent"></div>
+                </div>
+              ) : (
+                <>
+                  {/* Availability Summary */}
+                  <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-4 border border-emerald-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+                        <Clock className="w-5 h-5 text-emerald-600" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-emerald-900">Today's Availability</h4>
+                        <p className="text-xs text-emerald-700">When you can reach this contact</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                      <div className="bg-white/60 rounded-lg p-3">
+                        <p className="text-xs text-emerald-600 font-medium mb-1">Free Time</p>
+                        <p className="text-xl font-bold text-emerald-900">
+                          {calculateAvailability.totalAvailableMinutes} <span className="text-sm font-normal">min</span>
+                        </p>
+                      </div>
+                      <div className="bg-white/60 rounded-lg p-3">
+                        <p className="text-xs text-gray-600 font-medium mb-1">Busy Time</p>
+                        <p className="text-xl font-bold text-gray-900">
+                          {calculateAvailability.totalBusyMinutes} <span className="text-sm font-normal">min</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Available Time Slots */}
+                  {calculateAvailability.availableSlots.length > 0 ? (
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <span className="w-1 h-4 bg-emerald-500 rounded-full"></span>
+                        Free Time Windows
+                      </h4>
+                      <div className="space-y-2">
+                        {calculateAvailability.availableSlots.map((slot, index) => (
+                          <div
+                            key={index}
+                            className="p-4 rounded-xl bg-emerald-50 border-l-4 border-emerald-500 hover:shadow-sm transition-all"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+                                  <Check className="w-5 h-5 text-emerald-600" />
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-sm font-bold text-emerald-900">
+                                      {formatTime(slot.start)}
+                                    </span>
+                                    <span className="text-gray-400">→</span>
+                                    <span className="text-sm font-bold text-emerald-900">
+                                      {formatTime(slot.end)}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-emerald-700">
+                                    Available for {slot.duration} minutes
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg text-center">
+                                  FREE
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 bg-red-50 rounded-xl border border-red-200">
+                      <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-2" />
+                      <p className="text-sm font-medium text-red-900">Fully Booked Today</p>
+                      <p className="text-xs text-red-600 mt-1">No free time windows available</p>
+                    </div>
+                  )}
+
+                  {/* Scheduled Appointments (Busy Times) */}
+                  {calculateAvailability.todaysTasks.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <span className="w-1 h-4 bg-red-500 rounded-full"></span>
+                        Busy Times (Avoid Contacting)
+                      </h4>
+                      <div className="space-y-2">
+                        {calculateAvailability.todaysTasks.map((task) => {
+                          const startTime = task.due_time;
+                          const endTime = calculateEndTime(startTime, task.duration_minutes || 30);
+
+                          return (
+                            <div
+                              key={task.task_id}
+                              className="p-3 rounded-xl bg-red-50 border-l-4 border-red-500 opacity-80"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                    <X className="w-4 h-4 text-red-600" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-gray-900 truncate">{task.title}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <span className="text-xs font-medium text-red-700">
+                                        {formatTime(startTime)} - {endTime && formatTime(endTime)}
+                                      </span>
+                                      <span className="text-xs text-gray-500">
+                                        ({task.duration_minutes || 30} min)
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-lg flex-shrink-0">
+                                  BUSY
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Best Time to Contact */}
+                  {calculateAvailability.availableSlots.length > 0 && (
+                    <div className="bg-gradient-to-br from-sky-50 to-blue-50 rounded-xl p-4 border border-sky-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-8 h-8 bg-sky-100 rounded-lg flex items-center justify-center">
+                          <Target className="w-4 h-4 text-sky-600" />
+                        </div>
+                        <h4 className="text-sm font-bold text-sky-900">Best Time to Contact</h4>
+                      </div>
+                      <p className="text-xs text-sky-700 mb-2">
+                        Longest available window today
+                      </p>
+                      <div className="bg-white/60 rounded-lg p-3">
+                        {(() => {
+                          const longestSlot = calculateAvailability.availableSlots.reduce((max, slot) => 
+                            slot.duration > max.duration ? slot : max
+                          , calculateAvailability.availableSlots[0]);
+                          return (
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg font-bold text-sky-900">
+                                {formatTime(longestSlot.start)} - {formatTime(longestSlot.end)}
+                              </span>
+                              <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-xs font-medium rounded">
+                                {longestSlot.duration} min
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No Tasks Today */}
+                  {tasks.filter(t => t.due_date === new Date().toISOString().split('T')[0]).length === 0 && (
+                    <div className="text-center py-6 bg-emerald-50 rounded-xl border border-emerald-200">
+                      <Check className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                      <p className="text-sm font-medium text-emerald-900">Available All Day</p>
+                      <p className="text-xs text-emerald-700 mt-1">No scheduled appointments today</p>
+                      <p className="text-xs text-emerald-600 mt-2">
+                        Business hours: 9:00 AM - 6:00 PM
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Availability Settings Panel */}
+                  <div className="bg-sky-50 rounded-xl p-4 border border-sky-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-sky-100 rounded-lg flex items-center justify-center">
+                          <Calendar className="w-4 h-4 text-sky-600" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-sky-900">Availability Schedule</h4>
+                          <p className="text-xs text-sky-600">
+                            {calculateAvailability.hasStoredAvailability 
+                              ? `Custom schedule set (${availability?.timezone || 'UTC'})`
+                              : 'Using default 9 AM - 6 PM'}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setShowAvailabilityEditor(!showAvailabilityEditor)}
+                        className="px-3 py-1.5 bg-sky-100 hover:bg-sky-200 text-sky-700 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        {showAvailabilityEditor ? 'Close' : 'Edit'}
+                      </button>
+                    </div>
+
+                    {showAvailabilityEditor && (
+                      <div className="mt-3 pt-3 border-t border-sky-200 space-y-3">
+                        {!calculateAvailability.hasStoredAvailability && (
+                          <div className="bg-white/60 rounded-lg p-3">
+                            <p className="text-xs text-sky-700 mb-2">Quick Setup:</p>
+                            <button
+                              onClick={handleSetDefaultHours}
+                              disabled={availabilityLoading}
+                              className="w-full px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                            >
+                              {availabilityLoading ? 'Setting...' : 'Set Default Hours (Mon-Fri, 9 AM - 5 PM)'}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Show existing windows */}
+                        {availability?.raw_windows && availability.raw_windows.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-sky-700 mb-2">Current Schedule:</p>
+                            <div className="space-y-2 max-h-40 overflow-y-auto">
+                              {availability.raw_windows.map((window) => (
+                                <div key={window.availability_id} className="flex items-center justify-between bg-white/60 rounded-lg p-2">
+                                  <div className="flex-1">
+                                    <p className="text-xs font-medium text-gray-900">{window.day_of_week}</p>
+                                    <p className="text-xs text-gray-600">
+                                      {formatTime(window.start_time)} - {formatTime(window.end_time)}
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={() => handleDeleteWindow(window.availability_id)}
+                                    disabled={availabilityLoading}
+                                    className="p-1.5 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50"
+                                    title="Delete window"
+                                  >
+                                    <X className="w-4 h-4 text-red-500" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Add new window form */}
+                        <AvailabilityWindowForm 
+                          contactId={contact.contact_id}
+                          onSuccess={fetchAvailability}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Financials Tab */}
           {activeTab === 'financials' && showFinancials && (
@@ -1006,6 +1474,128 @@ const ContactDetail = ({
         }
       `}</style>
     </>
+  );
+};
+
+// Availability Window Form Component
+const AvailabilityWindowForm = ({ contactId, onSuccess }) => {
+  const [formData, setFormData] = useState({
+    day: 'monday',
+    startTime: '09:00',
+    endTime: '17:00',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const daysOfWeek = [
+    { value: 'all_days', label: 'All Days' },
+    { value: 'monday', label: 'Monday' },
+    { value: 'tuesday', label: 'Tuesday' },
+    { value: 'wednesday', label: 'Wednesday' },
+    { value: 'thursday', label: 'Thursday' },
+    { value: 'friday', label: 'Friday' },
+    { value: 'saturday', label: 'Saturday' },
+    { value: 'sunday', label: 'Sunday' }
+  ];
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      if (formData.day === 'all_days') {
+        // Create availability for all 7 days
+        const allDaysSchedule = [
+          'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
+        ].map(day => ({
+          day_of_week: day,
+          start_time: formData.startTime + ':00',
+          end_time: formData.endTime + ':00',
+          timezone: formData.timezone
+        }));
+        
+        // Add to existing schedule by getting current availability and appending
+        for (const dayWindow of allDaysSchedule) {
+          await createAvailabilityWindow(contactId, dayWindow);
+        }
+      } else {
+        // Create availability for single day
+        await createAvailabilityWindow(contactId, {
+          day_of_week: formData.day,
+          start_time: formData.startTime + ':00',
+          end_time: formData.endTime + ':00',
+          timezone: formData.timezone
+        });
+      }
+      
+      // Reset form
+      setFormData({
+        day: 'monday',
+        startTime: '09:00',
+        endTime: '17:00',
+        timezone: formData.timezone
+      });
+
+      // Refresh availability data
+      if (onSuccess) onSuccess();
+    } catch (error) {
+      console.error('Failed to add availability window:', error);
+      alert('Failed to add availability window. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white/60 rounded-lg p-3 space-y-2">
+      <p className="text-xs font-semibold text-sky-700 mb-2">Add Availability Window:</p>
+      
+      <div>
+        <label className="text-xs text-gray-600 block mb-1">Day</label>
+        <select
+          value={formData.day}
+          onChange={(e) => setFormData({ ...formData, day: e.target.value })}
+          className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+        >
+          {daysOfWeek.map(day => (
+            <option key={day.value} value={day.value}>
+              {day.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-gray-600 block mb-1">Start Time</label>
+          <input
+            type="time"
+            value={formData.startTime}
+            onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+            className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+            required
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-600 block mb-1">End Time</label>
+          <input
+            type="time"
+            value={formData.endTime}
+            onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+            className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+            required
+          />
+        </div>
+      </div>
+
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className="w-full px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+      >
+        {isSubmitting ? 'Adding...' : '+ Add Window'}
+      </button>
+    </form>
   );
 };
 
