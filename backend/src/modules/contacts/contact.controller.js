@@ -303,3 +303,49 @@ export const moveToDormant = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @desc   Bulk import contacts from CSV (Admin)
+ * @route  POST /contacts/admin/import
+ * @access Admin
+ */
+export const bulkImportContacts = async (req, res, next) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ message: 'CSV file is required (field name: file)' });
+    }
+
+    const companyId = req.user?.companyId || 1;
+    const options = { skipEmailNotify: true };
+    const csvBuffer = req.file.buffer;
+    const result = await contactService.importContacts(csvBuffer, companyId, options);
+    res.json({ message: 'Import completed', summary: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc   Bulk export contacts (Admin)
+ * @route  GET /contacts/admin/export?period=monthly|quarterly|yearly&year=2025&month=3&quarter=1
+ * @access Admin
+ */
+export const bulkExportContacts = async (req, res, next) => {
+  try {
+    const { period = 'monthly', year, month, quarter, status } = req.query;
+    const companyId = req.user?.companyId || 1;
+    const csv = await contactService.exportContacts(companyId, {
+      period,
+      year: year ? parseInt(year) : undefined,
+      month: month ? parseInt(month) : undefined,
+      quarter: quarter ? parseInt(quarter) : undefined,
+      status,
+    });
+    const filename = `contacts-${period}-${year || 'all'}.csv`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (error) {
+    next(error);
+  }
+};

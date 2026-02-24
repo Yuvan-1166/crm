@@ -109,6 +109,23 @@ export const moveToDormant = async (contactId, reason = null) => {
   return response.data;
 };
 
+// Bulk import contacts
+export const importContacts = async (file) => {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await api.post('/contacts/admin/import', form, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+};
+
+// Bulk export (returns blob)
+export const exportContacts = async (params = {}) => {
+  const q = new URLSearchParams(params).toString();
+  const response = await api.get(`/contacts/admin/export?${q}`, { responseType: 'blob' });
+  return response.data;
+};
+
 /* ---------------------------------------------------
    AVAILABILITY MANAGEMENT
 --------------------------------------------------- */

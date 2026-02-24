@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Grid3X3, List, MessageSquare, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Plus, Search, Grid3X3, List, MessageSquare, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, UploadCloud } from 'lucide-react';
 import ContactCard from './ContactCard';
 import ContactTable from './ContactTable';
+import { importContacts } from '../../services/contactService';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -22,6 +23,9 @@ const ContactGrid = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('table');
   const [currentPage, setCurrentPage] = useState(1);
+
+  // import file ref
+  const fileInputRef = useRef(null);
 
   // Theme-aware colors - admin uses softer amber/warm tones
   const themeColors = isAdmin ? {
@@ -136,6 +140,36 @@ const ContactGrid = ({
               <Plus className="w-5 h-5" />
               <span>Add Contact</span>
             </button>
+            {isAdmin && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={async e => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const res = await importContacts(file);
+                      alert(`Imported ${res.summary.imported}, failed ${res.summary.failed.length}`);
+                    } catch (err) {
+                      console.error(err);
+                      alert(err.response?.data?.message || err.message || 'Import error');
+                    } finally {
+                      e.target.value = null;
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:shadow-sm"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>Import</span>
+                </button>
+              </>
+            )}
             <button
               onClick={() => navigate(`/sessions/${activeStage.toLowerCase()}`)}
               className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl font-medium hover:from-purple-600 hover:to-indigo-700 transition-all shadow-lg shadow-purple-500/25 hover:shadow-xl hover:shadow-purple-500/30"
