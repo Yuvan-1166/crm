@@ -319,3 +319,48 @@ export const deleteContact = async (contactId) => {
     [contactId]
   );
 };
+
+/* ---------------------------------------------------
+   GET CONTACTS CREATED BETWEEN DATES (FOR EXPORT)
+--------------------------------------------------- */
+export const getContactsByDateRange = async (companyId, startDate, endDate, status = null) => {
+  const params = [companyId, startDate, endDate];
+  let statusWhere = '';
+  if (status) {
+    statusWhere = 'AND c.status = ?';
+    params.push(status);
+  }
+  const [rows] = await db.query(
+    `
+    SELECT
+      c.contact_id,
+      c.name,
+      c.email,
+      c.phone,
+      c.job_title,
+      c.status,
+      c.temperature,
+      c.source,
+      c.interest_score,
+      c.created_at
+    FROM contacts c
+    WHERE c.company_id = ?
+      AND c.created_at BETWEEN ? AND ?
+      ${statusWhere}
+    ORDER BY c.created_at DESC
+    `,
+    params
+  );
+  return rows;
+};
+
+/* ---------------------------------------------------
+   GET DISTINCT YEARS FROM contacts.created_at
+--------------------------------------------------- */
+export const getDistinctCreatedYears = async (companyId) => {
+  const [rows] = await db.query(
+    `SELECT DISTINCT YEAR(created_at) AS year FROM contacts WHERE company_id = ? ORDER BY year DESC`,
+    [companyId]
+  );
+  return rows.map(r => r.year);
+};
