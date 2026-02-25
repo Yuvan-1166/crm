@@ -64,12 +64,13 @@ export const completeProfile = async (req, res, next) => {
       message: "Profile completed successfully",
       token: newToken,
       user: {
+        emp_id: updatedEmployee.emp_id,
+        companyId: updatedEmployee.company_id,
         name: updatedEmployee.name,
         email: updatedEmployee.email,
         phone: updatedEmployee.phone,
         department: updatedEmployee.department,
         role: updatedEmployee.role,
-        company_id: updatedEmployee.company_id,
       },
     });
   } catch (error) {

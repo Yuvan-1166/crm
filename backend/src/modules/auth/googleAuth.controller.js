@@ -77,6 +77,8 @@ export const googleLogin = async (req, res, next) => {
         token: jwtToken,
         isNewAdmin: true,
         user: {
+          emp_id: employee.emp_id,
+          companyId: null,
           name: employee.name,
           email: employee.email,
           phone: employee.phone,
@@ -127,6 +129,8 @@ export const googleLogin = async (req, res, next) => {
     res.json({
       token: jwtToken,
       user: {
+        emp_id: employee.emp_id,
+        companyId: employee.company_id,
         name: employee.name,
         email: employee.email,
         phone: employee.phone,

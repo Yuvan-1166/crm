@@ -877,7 +877,7 @@ InviteBanner.displayName = 'InviteBanner';
 
 const DiscussView = () => {
   const { user } = useAuth();
-  const { socket, connected, emit } = useSocket();
+  const { connected, emit } = useSocket();
 
   const [channels, setChannels] = useState([]);
   const [activeChannelId, setActiveChannelId] = useState(null);
@@ -921,7 +921,8 @@ const DiscussView = () => {
   };
 
   const selectChannel = useCallback(async (channelId) => {
-    if (activeChannelId && socket) {
+    // Leave the current channel room (emit is always fresh via ref)
+    if (activeChannelId) {
       emit('channel:leave', activeChannelId);
     }
 
@@ -943,17 +944,21 @@ const DiscussView = () => {
       setMembers(membersData);
       setHasMore(messagesData.length >= 50);
 
-      if (socket) {
-        emit('channel:join', channelId);
-      }
-
+      // channel:join is handled by the useEffect below that watches activeChannelId + connected
       discussService.markChannelRead(channelId).catch(() => {});
     } catch (err) {
       console.error('Failed to load channel:', err);
     } finally {
       setLoading(false);
     }
-  }, [activeChannelId, socket, emit]);
+  }, [activeChannelId, emit]);
+
+  // Join the socket channel room whenever the active channel or connection state changes.
+  // This is the ONLY place channel:join is emitted — avoids stale socket closure bugs.
+  useEffect(() => {
+    if (!activeChannelId || !connected) return;
+    emit('channel:join', activeChannelId);
+  }, [activeChannelId, connected, emit]);
 
   const loadMore = useCallback(async () => {
     if (!activeChannelId || loading || !hasMore) return;

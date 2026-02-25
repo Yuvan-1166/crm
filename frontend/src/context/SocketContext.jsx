@@ -7,7 +7,6 @@ import { useAuth } from './AuthContext';
  *
  * v2 — Organization Namespace Isolation:
  *  - Connects to /org/<companyId> instead of the shared root namespace
- *  - This matches the server's dynamic per-org namespace strategy
  *  - A user from org 42 connects to /org/42; they cannot receive events from /org/99
  */
 
@@ -21,8 +20,17 @@ export const SocketProvider = ({ children }) => {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated || !token || !user?.companyId) {
-      // Disconnect if logged out or user not yet loaded
+    // Resolve companyId: prefer user object, fall back to JWT payload decode
+    // (needed for sessions created before companyId was added to the user object)
+    let companyId = user?.companyId;
+    if (!companyId && token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        companyId = payload?.companyId;
+      } catch { /* ignore malformed token */ }
+    }
+
+    if (!isAuthenticated || !token || !companyId) {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
@@ -31,12 +39,11 @@ export const SocketProvider = ({ children }) => {
       return;
     }
 
-    // Connect to the organization-specific namespace — strong isolation by design
-    const orgNamespace = `/org/${user.companyId}`;
+    const orgNamespace = `/org/${companyId}`;
 
     const socket = io(`${SOCKET_SERVER}${orgNamespace}`, {
       auth: { token },
-      transports: ['websocket', 'polling'], // prefer WS, fallback to polling
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
@@ -68,14 +75,18 @@ export const SocketProvider = ({ children }) => {
     };
   }, [isAuthenticated, token, user?.companyId]);
 
+  // emit always reads socketRef.current at call time — never stale
   const emit = useCallback((event, data, ack) => {
     if (socketRef.current?.connected) {
       socketRef.current.emit(event, data, ack);
+    } else {
+      console.warn(`[Socket] emit('${event}') skipped — socket not connected`);
     }
   }, []);
 
   const value = {
-    socket: socketRef.current,
+    // Expose socketRef (not .current) so consumers always get the live socket
+    socketRef,
     connected,
     emit,
   };
@@ -84,7 +95,7 @@ export const SocketProvider = ({ children }) => {
 };
 
 /**
- * Hook to access the socket instance and connection status
+ * Hook to access the socket ref, connection status, and emit helper
  */
 export const useSocket = () => {
   const ctx = useContext(SocketContext);
@@ -93,14 +104,18 @@ export const useSocket = () => {
 };
 
 /**
- * Hook to subscribe to a socket event with automatic cleanup
+ * Hook to subscribe to a socket event with automatic cleanup.
+ * Uses socketRef so it always binds to the live socket instance.
  */
 export const useSocketEvent = (event, handler) => {
-  const { socket } = useSocket();
+  const { socketRef, connected } = useSocket();
 
   useEffect(() => {
-    if (!socket || !event) return;
+    const socket = socketRef.current;
+    if (!socket || !event || !connected) return;
     socket.on(event, handler);
     return () => socket.off(event, handler);
-  }, [socket, event, handler]);
+  // connected ensures we re-subscribe after reconnection
+  // handler should be a stable ref (useCallback) in the consumer
+  }, [connected, event, handler, socketRef]);
 };
