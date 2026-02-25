@@ -47,20 +47,29 @@ const renderContent = (content) => {
    CHANNEL LIST SIDEBAR
 ===================================================== */
 
-const ChannelList = memo(({ channels, activeChannelId, onSelect, onCreateClick, collapsed }) => {
+const ChannelList = memo(({ channels, activeChannelId, onSelect, onCreateClick, onBrowseClick, collapsed }) => {
   if (collapsed) return null;
 
   return (
     <div className="w-64 border-r border-gray-200 bg-gray-50 flex flex-col h-full">
       <div className="p-3 border-b border-gray-200 flex items-center justify-between">
         <h2 className="font-semibold text-sm text-gray-700 uppercase tracking-wider">Channels</h2>
-        <button
-          onClick={onCreateClick}
-          className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
-          title="Create channel"
-        >
-          <Plus className="w-4 h-4 text-gray-500" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onBrowseClick}
+            className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
+            title="Browse public channels"
+          >
+            <Search className="w-4 h-4 text-gray-500" />
+          </button>
+          <button
+            onClick={onCreateClick}
+            className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
+            title="Create channel"
+          >
+            <Plus className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
@@ -96,6 +105,137 @@ const ChannelList = memo(({ channels, activeChannelId, onSelect, onCreateClick, 
   );
 });
 ChannelList.displayName = 'ChannelList';
+
+/* =====================================================
+   BROWSE PUBLIC CHANNELS MODAL
+===================================================== */
+
+const BrowseChannelsModal = memo(({ onClose, myChannelIds, onJoined }) => {
+  const [allChannels, setAllChannels] = useState([]);
+  const [query, setQuery] = useState('');
+  const [joining, setJoining] = useState(null);
+  const [loadingList, setLoadingList] = useState(true);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    discussService.browseChannels()
+      .then(setAllChannels)
+      .catch(() => {})
+      .finally(() => setLoadingList(false));
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase().trim();
+    return allChannels.filter(ch =>
+      !q ||
+      ch.name.toLowerCase().includes(q) ||
+      ch.description?.toLowerCase().includes(q)
+    );
+  }, [allChannels, query]);
+
+  const handleJoin = async (ch) => {
+    if (joining) return;
+    setJoining(ch.channel_id);
+    try {
+      await discussService.joinChannel(ch.channel_id);
+      onJoined(ch);
+      // mark as joined locally
+      setAllChannels(prev =>
+        prev.map(c => c.channel_id === ch.channel_id ? { ...c, _joined: true } : c)
+      );
+    } catch (e) {
+      console.error('Join failed:', e);
+    } finally {
+      setJoining(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Browse Public Channels</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Find and join open channels in your organization</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-5 pt-4 pb-2">
+          <div className="flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2.5">
+            <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search channels..."
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400"
+            />
+            {query && (
+              <button onClick={() => setQuery('')} className="text-gray-400 hover:text-gray-600">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Channel list */}
+        <div className="flex-1 overflow-y-auto px-3 pb-4">
+          {loadingList ? (
+            <div className="text-center py-10 text-gray-400 text-sm">Loading channels…</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 text-sm">
+              {query ? `No channels match "${query}"` : 'No public channels available'}
+            </div>
+          ) : (
+            <div className="space-y-1 mt-1">
+              {filtered.map(ch => {
+                const isMember = myChannelIds.has(ch.channel_id) || ch._joined;
+                return (
+                  <div key={ch.channel_id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center flex-shrink-0">
+                      <Hash className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm text-gray-900 truncate"># {ch.name}</div>
+                      {ch.description && (
+                        <div className="text-xs text-gray-400 truncate">{ch.description}</div>
+                      )}
+                      <div className="text-[11px] text-gray-400 mt-0.5">{ch.member_count || 0} members</div>
+                    </div>
+                    <button
+                      onClick={() => !isMember && handleJoin(ch)}
+                      disabled={isMember || joining === ch.channel_id}
+                      className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                        isMember
+                          ? 'bg-gray-100 text-gray-400 cursor-default'
+                          : joining === ch.channel_id
+                          ? 'bg-sky-100 text-sky-400 cursor-wait'
+                          : 'bg-sky-500 text-white hover:bg-sky-600'
+                      }`}
+                    >
+                      {isMember ? 'Joined' : joining === ch.channel_id ? 'Joining…' : 'Join'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+BrowseChannelsModal.displayName = 'BrowseChannelsModal';
 
 /* =====================================================
    CREATE CHANNEL MODAL
@@ -388,6 +528,12 @@ InviteModal.displayName = 'InviteModal';
    SINGLE MESSAGE BUBBLE
 ===================================================== */
 
+const AVATAR_COLORS = {
+  ADMIN: 'bg-gradient-to-br from-orange-400 to-orange-600',
+  EMPLOYEE: 'bg-gradient-to-br from-emerald-400 to-teal-500',
+  default: 'bg-gradient-to-br from-sky-400 to-indigo-500',
+};
+
 const MessageBubble = memo(({ message, isOwn, onEdit, onDelete, onReply }) => {
   const [showActions, setShowActions] = useState(false);
 
@@ -398,27 +544,47 @@ const MessageBubble = memo(({ message, isOwn, onEdit, onDelete, onReply }) => {
     hour12: true,
   });
 
+  const avatarColor = AVATAR_COLORS[message.sender_role] || AVATAR_COLORS.default;
+  const isEdited = !!message.is_edited; // MySQL tinyint 0 → false (prevents React rendering literal 0)
+
   return (
     <div
-      className={`group flex gap-3 px-4 py-1.5 hover:bg-gray-50 transition-colors`}
+      className={`group flex gap-3 px-4 py-1.5 hover:bg-gray-50 transition-colors ${
+        isOwn ? 'flex-row-reverse' : ''
+      }`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
       {/* Avatar */}
-      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">
+      <div className={`w-8 h-8 rounded-full ${avatarColor} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5`}>
         {(message.sender_name || 'U')[0].toUpperCase()}
       </div>
 
       {/* Content */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2">
-          <span className="font-semibold text-sm text-gray-900">{message.sender_name}</span>
+      <div className={`flex-1 min-w-0 flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
+        {/* Name + time */}
+        <div className={`flex items-baseline gap-2 ${isOwn ? 'flex-row-reverse' : ''}`}>
+          <span className={`font-semibold text-sm ${isOwn ? 'text-indigo-700' : 'text-gray-900'}`}>
+            {message.sender_name}
+            {message.sender_role === 'ADMIN' && (
+              <span className="ml-1 text-[9px] font-bold text-orange-500 uppercase tracking-wider">Admin</span>
+            )}
+          </span>
           <span className="text-[11px] text-gray-400">{time}</span>
-          {message.is_edited && <span className="text-[10px] text-gray-400">(edited)</span>}
+          {isEdited && <span className="text-[10px] text-gray-400">(edited)</span>}
         </div>
-        <div className="text-sm text-gray-700 leading-relaxed break-words whitespace-pre-wrap">
+        {/* Bubble */}
+        <div
+          className={`mt-0.5 px-3 py-2 rounded-2xl text-sm leading-relaxed break-words whitespace-pre-wrap max-w-[75%] ${
+            isOwn
+              ? 'bg-indigo-600 text-white rounded-tr-sm'
+              : 'bg-gray-100 text-gray-800 rounded-tl-sm'
+          }`}
+        >
           {message.is_deleted ? (
-            <span className="italic text-gray-400">This message was deleted</span>
+            <span className={`italic ${isOwn ? 'text-indigo-200' : 'text-gray-400'}`}>
+              This message was deleted
+            </span>
           ) : (
             renderContent(message.content)
           )}
@@ -427,7 +593,7 @@ const MessageBubble = memo(({ message, isOwn, onEdit, onDelete, onReply }) => {
 
       {/* Hover Actions */}
       {showActions && !message.is_deleted && (
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className={`flex items-center gap-0.5 self-center ${isOwn ? 'flex-row-reverse' : ''}`}>
           <button onClick={() => onReply(message)} className="p-1 hover:bg-gray-200 rounded" title="Reply in thread">
             <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
           </button>
@@ -889,6 +1055,7 @@ const DiscussView = () => {
   const [hasMore, setHasMore] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [showBrowse, setShowBrowse] = useState(false);
   const [editingMessage, setEditingMessage] = useState(null);
   const [typingUsers, setTypingUsers] = useState([]);
   const [pendingInvite, setPendingInvite] = useState(null); // for toast notification
@@ -1093,6 +1260,7 @@ const DiscussView = () => {
         activeChannelId={activeChannelId}
         onSelect={selectChannel}
         onCreateClick={() => setShowCreateModal(true)}
+        onBrowseClick={() => setShowBrowse(true)}
       />
 
       {/* Main Chat Area */}
@@ -1103,7 +1271,7 @@ const DiscussView = () => {
               channel={activeChannel}
               memberCount={members.length}
               onMembersClick={() => setShowMembers(prev => !prev)}
-              onSearchClick={() => {}}
+              onSearchClick={() => setShowBrowse(true)}
             />
 
             <MessageList
@@ -1157,6 +1325,24 @@ const DiscussView = () => {
         <CreateChannelModal
           onClose={() => setShowCreateModal(false)}
           onCreated={handleChannelCreated}
+        />
+      )}
+
+      {/* Browse public channels modal */}
+      {showBrowse && (
+        <BrowseChannelsModal
+          myChannelIds={new Set(channels.map(c => c.channel_id))}
+          onClose={() => setShowBrowse(false)}
+          onJoined={(ch) => {
+            // Add to sidebar if not already there
+            setChannels(prev => {
+              if (prev.some(c => c.channel_id === ch.channel_id)) return prev;
+              return [...prev, { ...ch, unread_count: 0, channel_type: 'PUBLIC' }];
+            });
+            // Auto-select the joined channel and close modal
+            selectChannel(ch.channel_id);
+            setShowBrowse(false);
+          }}
         />
       )}
 
