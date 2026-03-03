@@ -1,11 +1,56 @@
 import { Router } from "express";
+import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
 import * as discussController from "./discuss.controller.js";
 import { authenticateEmployee } from "../../middlewares/auth.middleware.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = Router();
 
 // All discuss routes require authentication
 router.use(authenticateEmployee);
+
+/* =====================================================
+   FILE UPLOAD (multer disk storage)
+===================================================== */
+
+const ALLOWED_MIME = [
+  // Images
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+  // Audio / Video
+  'audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/wav', 'audio/mp4',
+  'video/mp4', 'video/webm',
+  // Documents
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain', 'text/csv',
+];
+
+const diskStorage = multer.diskStorage({
+  destination: path.join(__dirname, '../../../../uploads/discuss'),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
+
+const upload = multer({
+  storage: diskStorage,
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIME.includes(file.mimetype)) cb(null, true);
+    else cb(new Error(`File type not allowed: ${file.mimetype}`));
+  },
+});
+
+// Upload attachment and get back { url, type, name, size }
+router.post('/upload', upload.single('file'), discussController.uploadAttachment);
 
 /* =====================================================
    CHANNEL ROUTES

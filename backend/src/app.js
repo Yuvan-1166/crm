@@ -4,9 +4,19 @@ import helmet from "helmet";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
 
 // Load environment variables
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Ensure uploads directory exists
+const UPLOADS_DIR = path.join(__dirname, '../../uploads/discuss');
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // Import database health check
 import healthRouter from "./config/dbhealthcheck.js";
@@ -57,11 +67,29 @@ app.set('trust proxy', process.env.TRUST_PROXY || true);
 ===================================================== */
 
 // Helmet - Security headers
-app.use(helmet());
+// crossOriginResourcePolicy: false → let express.static set CORP per-file
+// contentSecurityPolicy: false → the default CSP (default-src 'self') blocks
+//   cross-origin <audio>/<img> loaded from backend:3000 on frontend:5173
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  contentSecurityPolicy: false,
+}));
 
 // CORS - Cross-Origin Resource Sharing
+// Normalise both sides to strip trailing slashes so http://localhost:5173/
+// and http://localhost:5173 both match correctly.
+const ALLOWED_ORIGIN = (process.env.CORS_ORIGIN || '').replace(/\/$/, '');
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN || "*",
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    const normalised = origin.replace(/\/$/, '');
+    if (!ALLOWED_ORIGIN || normalised === ALLOWED_ORIGIN) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin '${origin}' not allowed`));
+    }
+  },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
@@ -99,6 +127,51 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Compress responses
 app.use(compression());
+
+// Serve uploaded discussion media (images, audio, files)
+// Mounted at both /uploads AND /api/uploads so it works with or without the /api proxy prefix.
+// Cross-Origin-Resource-Policy: cross-origin is required so the browser allows
+// cross-origin <audio>/<img> loads from a different port (e.g. frontend on :5173).
+const staticOpts = {
+  setHeaders: (res, filePath) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+    // For audio/video files in discuss/, sniff the first 4 bytes to detect
+    // the real container format.  Old recordings may be OGG files saved with
+    // a .webm extension, so trusting the extension alone causes silent
+    // playback failures (NS_ERROR_DOM_MEDIA_METADATA_ERR on Firefox).
+    if (/\.(webm|ogg)$/i.test(filePath)) {
+      try {
+        // Read enough bytes to detect both the container (first 4 bytes)
+        // and whether an audio track exists (scan for codec IDs in header).
+        const fd = fs.openSync(filePath, 'r');
+        const buf = Buffer.alloc(512);
+        const bytesRead = fs.readSync(fd, buf, 0, 512, 0);
+        fs.closeSync(fd);
+        const header = buf.subarray(0, bytesRead);
+        const magic = header.toString('ascii', 0, 4);
+
+        if (magic === 'OggS') {
+          res.setHeader('Content-Type', 'audio/ogg');
+        } else if (header[0] === 0x1A && header[1] === 0x45 && header[2] === 0xDF && header[3] === 0xA3) {
+          // EBML header → Matroska/WebM container.
+          // Check whether the file contains an audio codec (A_OPUS / A_VORBIS)
+          // or only a video codec (V_VP8 / V_VP9).  Files recorded by Firefox
+          // with audio/webm may contain only V_VP8 and no audio at all.
+          const hasAudioCodec = header.includes(Buffer.from('A_OPUS')) ||
+                                header.includes(Buffer.from('A_VORBIS'));
+          res.setHeader('Content-Type', hasAudioCodec ? 'audio/webm' : 'video/webm');
+        }
+        // For any other signature, let express.static use its default
+      } catch {
+        // File unreadable — fall through to default Content-Type
+      }
+    }
+  },
+};
+const UPLOADS_STATIC = path.join(__dirname, '../../uploads');
+app.use('/uploads', express.static(UPLOADS_STATIC, staticOpts));
+app.use('/api/uploads', express.static(UPLOADS_STATIC, staticOpts));
 
 /* =====================================================
    REQUEST LOGGING (Development)

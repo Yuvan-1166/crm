@@ -1,11 +1,19 @@
 import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
 import {
   Hash, Lock, Plus, Search, Users, X, Send, Pencil, Trash2,
-  MessageSquare, AtSign, ChevronDown, UserPlus, Check, Bell
+  MessageSquare, AtSign, ChevronDown, UserPlus, Check, Bell,
+  Paperclip, Mic, MicOff, FileDown, Music, Image as ImageIcon
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket, useSocketEvent } from '../../context/SocketContext';
 import * as discussService from '../../services/discussService';
+
+// Base URL for serving uploaded files (backend static route)
+// Strip the /api path suffix so file URLs become http://host:port/uploads/...
+// rather than http://host:port/api/uploads/... (which doesn't exist as a static route)
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000')
+  .replace(/\/api\/?$/, '')   // remove trailing /api
+  .replace(/\/$/, '');        // remove trailing slash
 
 /* =====================================================
    MENTION HELPERS
@@ -545,7 +553,8 @@ const MessageBubble = memo(({ message, isOwn, onEdit, onDelete, onReply }) => {
   });
 
   const avatarColor = AVATAR_COLORS[message.sender_role] || AVATAR_COLORS.default;
-  const isEdited = !!message.is_edited; // MySQL tinyint 0 → false (prevents React rendering literal 0)
+  const isEdited = !!message.is_edited;   // tinyint 0 → false
+  const isDeleted = !!message.is_deleted; // tinyint 0 → false
 
   return (
     <div
@@ -575,19 +584,127 @@ const MessageBubble = memo(({ message, isOwn, onEdit, onDelete, onReply }) => {
         </div>
         {/* Bubble */}
         <div
-          className={`mt-0.5 px-3 py-2 rounded-2xl text-sm leading-relaxed break-words whitespace-pre-wrap max-w-[75%] ${
+          className={`mt-0.5 rounded-2xl text-sm leading-relaxed max-w-[75%] overflow-hidden ${
             isOwn
               ? 'bg-indigo-600 text-white rounded-tr-sm'
               : 'bg-gray-100 text-gray-800 rounded-tl-sm'
           }`}
         >
-          {message.is_deleted ? (
-            <span className={`italic ${isOwn ? 'text-indigo-200' : 'text-gray-400'}`}>
-              This message was deleted
-            </span>
-          ) : (
-            renderContent(message.content)
+          {/* Text content */}
+          {!isDeleted && message.content && (
+            <div className="px-3 py-2 break-words whitespace-pre-wrap">
+              {renderContent(message.content)}
+            </div>
           )}
+          {isDeleted && (
+            <div className="px-3 py-2">
+              <span className={`italic ${isOwn ? 'text-indigo-200' : 'text-gray-400'}`}>
+                This message was deleted
+              </span>
+            </div>
+          )}
+
+          {/* Attachment */}
+          {!isDeleted && message.attachment_url && (() => {
+            const url = `${API_BASE}${message.attachment_url}`;
+            const mime = message.attachment_type || '';
+            const isImg = mime.startsWith('image/');
+            const isAudio = mime.startsWith('audio/') || mime === 'video/webm' || /voice/i.test(message.attachment_name || '');
+            // Extract duration stored in name e.g. "Voice note (12s)"
+            const durMatch = message.attachment_name?.match(/(\d+)s\)$/);
+            const durLabel = durMatch ? `${durMatch[1]}s` : null;
+            if (isImg) return (
+              <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+                <img
+                  src={url}
+                  alt={message.attachment_name || 'image'}
+                  className="max-w-full max-h-64 object-contain w-full bg-black/5"
+                  loading="lazy"
+                  onError={(e) => {
+                    // Image failed to load — show filename + download link instead
+                    const parent = e.target.parentNode;
+                    if (parent) {
+                      parent.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px">
+                        📎 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${message.attachment_name || 'image'}</span>
+                      </div>`;
+                    }
+                  }}
+                />
+              </a>
+            );
+
+            if (isAudio) return (
+              <div className="px-3 py-2">
+                <div className={`flex items-center gap-1 mb-1 text-[11px] font-medium ${
+                  isOwn ? 'text-indigo-100' : 'text-gray-500'
+                }`}>
+                  <Music className="w-3 h-3" />
+                  <span>Voice note</span>
+                  {durLabel && (
+                    <span className={`ml-auto font-mono text-[10px] ${
+                      isOwn ? 'text-indigo-200' : 'text-gray-400'
+                    }`}>{durLabel}</span>
+                  )}
+                </div>
+                <audio
+                  controls
+                  preload="metadata"
+                  className="w-full"
+                  style={{ height: '32px', minWidth: '200px' }}
+                  ref={(el) => {
+                    if (!el) return;
+                    // Listen for errors on the <source> child AND the <audio>
+                    // itself.  When all sources fail, the <audio> fires an
+                    // 'error' on each <source> then stops — we catch it here
+                    // and replace the player with a download link.
+                    const showFallback = () => {
+                      const wrapper = el.parentNode;
+                      if (wrapper) {
+                        wrapper.innerHTML = `<a href="${url}" download style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;color:inherit;text-decoration:underline">
+                          \u{1F507} Voice note could not be played \u2014 click to download
+                        </a>`;
+                      }
+                    };
+                    el.onerror = showFallback;
+                    // Also listen on child <source> elements  
+                    const src = el.querySelector('source');
+                    if (src) src.onerror = showFallback;
+                  }}
+                >
+                  <source src={url} />
+                  Your browser does not support the audio element.
+                </audio>
+              </div>
+            );
+
+            // Generic file download card
+            const sizeFmt = message.attachment_size
+              ? message.attachment_size > 1048576
+                ? `${(message.attachment_size / 1048576).toFixed(1)} MB`
+                : `${(message.attachment_size / 1024).toFixed(0)} KB`
+              : '';
+            return (
+              <a
+                href={url}
+                download={message.attachment_name}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`flex items-center gap-2 px-3 py-2 border-t ${
+                  isOwn ? 'border-indigo-500 hover:bg-indigo-700' : 'border-gray-200 hover:bg-gray-200'
+                } transition-colors`}
+              >
+                <FileDown className={`w-4 h-4 flex-shrink-0 ${
+                  isOwn ? 'text-indigo-200' : 'text-gray-400'
+                }`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate">{message.attachment_name}</p>
+                  {sizeFmt && <p className={`text-[10px] ${
+                    isOwn ? 'text-indigo-200' : 'text-gray-400'
+                  }`}>{sizeFmt}</p>}
+                </div>
+              </a>
+            );
+          })()}
         </div>
       </div>
 
@@ -664,10 +781,55 @@ MentionPopup.displayName = 'MentionPopup';
    MESSAGE COMPOSER (with mention autocomplete)
 ===================================================== */
 
-const MessageComposer = memo(({ channelId, members, deals, onSendViaSocket, editingMessage, onCancelEdit }) => {
+/* =====================================================
+   ATTACHMENT PREVIEW STRIP (inside composer)
+===================================================== */
+
+const AttachmentPreview = memo(({ attachment, onRemove }) => {
+  if (!attachment) return null;
+  const isImage = attachment.type?.startsWith('image/');
+  const isAudio = attachment.type?.startsWith('audio/');
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 mb-2 bg-gray-50 border border-gray-200 rounded-xl">
+      {isImage && attachment.previewUrl && (
+        <img src={attachment.previewUrl} className="h-10 w-10 object-cover rounded-lg" alt="preview" />
+      )}
+      {isAudio && <Music className="w-5 h-5 text-sky-500 flex-shrink-0" />}
+      {!isImage && !isAudio && <FileDown className="w-5 h-5 text-gray-400 flex-shrink-0" />}
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-medium text-gray-700 truncate">{attachment.name}</p>
+        <p className="text-[10px] text-gray-400">
+          {attachment.size ? `${(attachment.size / 1024).toFixed(1)} KB` : ''}
+        </p>
+      </div>
+      <button onClick={onRemove} className="text-gray-400 hover:text-red-500 flex-shrink-0">
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+});
+AttachmentPreview.displayName = 'AttachmentPreview';
+
+/* =====================================================
+   MESSAGE COMPOSER (text + file picker + audio)
+===================================================== */
+
+const MessageComposer = memo(({ channelId, members, deals, editingMessage, onCancelEdit }) => {
   const [text, setText] = useState('');
   const [mentionQuery, setMentionQuery] = useState(null);
+  const [attachment, setAttachment] = useState(null);   // { file, previewUrl, type, name, size }
+  const [uploading, setUploading] = useState(false);
+
+  // Audio recording state
+  const [recording, setRecording] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
+  const recStartTimeRef = useRef(0);   // Date.now() when recording started
+  const mediaRecRef = useRef(null);
+  const recTimerRef = useRef(null);
+  const chunksRef = useRef([]);
+
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const { emit } = useSocket();
 
   useEffect(() => {
@@ -677,89 +839,179 @@ const MessageComposer = memo(({ channelId, members, deals, onSendViaSocket, edit
     }
   }, [editingMessage]);
 
+  // ---- Text change + mention detection ----
   const handleChange = (e) => {
     const val = e.target.value;
     setText(val);
-
     const cursorPos = e.target.selectionStart;
-    const textBeforeCursor = val.slice(0, cursorPos);
-
-    const atMatch = textBeforeCursor.match(/@(\w*)$/);
-    const hashMatch = textBeforeCursor.match(/#(\w*)$/);
-
-    if (atMatch) {
-      setMentionQuery({ type: 'employee', query: atMatch[1].toLowerCase(), startIndex: cursorPos - atMatch[0].length });
-    } else if (hashMatch) {
-      setMentionQuery({ type: 'deal', query: hashMatch[1].toLowerCase(), startIndex: cursorPos - hashMatch[0].length });
-    } else {
-      setMentionQuery(null);
-    }
+    const before = val.slice(0, cursorPos);
+    const atMatch = before.match(/@(\w*)$/);
+    const hashMatch = before.match(/#(\w*)$/);
+    if (atMatch) setMentionQuery({ type: 'employee', query: atMatch[1].toLowerCase(), startIndex: cursorPos - atMatch[0].length });
+    else if (hashMatch) setMentionQuery({ type: 'deal', query: hashMatch[1].toLowerCase(), startIndex: cursorPos - hashMatch[0].length });
+    else setMentionQuery(null);
   };
 
   const filteredItems = useMemo(() => {
     if (!mentionQuery) return [];
     const q = mentionQuery.query;
     if (mentionQuery.type === 'employee') {
-      return (members || [])
-        .filter(m => m.name.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q))
-        .slice(0, 8)
-        .map(m => ({ id: m.emp_id, name: m.name, email: m.email }));
-    } else {
-      return (deals || [])
-        .filter(d => d.product_name?.toLowerCase().includes(q))
-        .slice(0, 8)
-        .map(d => ({ id: d.deal_id, name: d.product_name }));
+      return (members || []).filter(m => m.name.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q)).slice(0, 8).map(m => ({ id: m.emp_id, name: m.name, email: m.email }));
     }
+    return (deals || []).filter(d => d.product_name?.toLowerCase().includes(q)).slice(0, 8).map(d => ({ id: d.deal_id, name: d.product_name }));
   }, [mentionQuery, members, deals]);
 
   const handleMentionSelect = (item) => {
     if (!mentionQuery) return;
     const before = text.slice(0, mentionQuery.startIndex);
     const after = text.slice(inputRef.current?.selectionStart || text.length);
-
-    const insertion = mentionQuery.type === 'employee'
-      ? `@[${item.name}](emp:${item.id}) `
-      : `#[${item.name}](deal:${item.id}) `;
-
-    setText(before + insertion + after);
+    const ins = mentionQuery.type === 'employee' ? `@[${item.name}](emp:${item.id}) ` : `#[${item.name}](deal:${item.id}) `;
+    setText(before + ins + after);
     setMentionQuery(null);
     inputRef.current?.focus();
   };
 
-  const handleSend = () => {
+  // ---- File picker ----
+  const openFilePicker = () => fileInputRef.current?.click();
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+    setAttachment({ file, previewUrl, type: file.type, name: file.name, size: file.size });
+    e.target.value = '';
+  };
+
+  const removeAttachment = () => {
+    if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    setAttachment(null);
+  };
+
+  // ---- Audio recorder ----
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Pick a MIME type the browser genuinely records audio with.
+      // IMPORTANT: OGG must come BEFORE WebM — Firefox claims to support
+      // audio/webm;codecs=opus but silently produces a VP8 video-only WebM
+      // file with no audio track, causing playback to fail.  OGG is Firefox's
+      // native recording format and always works correctly.
+      const types = [
+        'audio/ogg;codecs=opus',   // Firefox native — always works
+        'audio/webm;codecs=opus',  // Chrome / Edge native
+        'audio/webm',              // Generic WebM fallback
+        'audio/wav',               // Last-resort uncompressed
+      ];
+      const supportedType = types.find(t => MediaRecorder.isTypeSupported(t));
+
+      // If nothing matched, let the browser pick its default
+      const mrOpts = supportedType ? { mimeType: supportedType } : undefined;
+      const mr = new MediaRecorder(stream, mrOpts);
+      // Capture what the recorder is actually using (may differ from request)
+      const actualMime = mr.mimeType;
+
+      chunksRef.current = [];
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunksRef.current, { type: actualMime });
+        // Compute duration from wall-clock time — immune to stale React state
+        const durationSecs = Math.round((Date.now() - recStartTimeRef.current) / 1000);
+        setRecording(false);
+        setRecSeconds(0);
+        clearInterval(recTimerRef.current);
+        // Derive a clean base MIME and file extension from what was actually recorded
+        const baseMime = (actualMime || 'audio/webm').split(';')[0];
+        const extMap = { 'audio/ogg': 'ogg', 'audio/wav': 'wav', 'audio/mpeg': 'mp3', 'audio/webm': 'webm', 'video/webm': 'webm' };
+        const ext = extMap[baseMime] || 'webm';
+        const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: baseMime });
+        setAttachment({ file, previewUrl: null, type: baseMime, name: `Voice note (${durationSecs}s)`, size: blob.size });
+      };
+      mr.start();
+      mediaRecRef.current = mr;
+      recStartTimeRef.current = Date.now(); // capture start timestamp
+      setRecording(true);
+      setRecSeconds(0);
+      recTimerRef.current = setInterval(() => {
+        setRecSeconds(Math.round((Date.now() - recStartTimeRef.current) / 1000));
+      }, 500); // update every 500ms for smooth display
+    } catch (err) {
+      console.error('Microphone access denied:', err);
+      alert('Microphone access is required to record audio.');
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRecRef.current?.stop();
+    clearInterval(recTimerRef.current);
+  };
+
+  // ---- Send ----
+  const handleSend = async () => {
     const content = text.trim();
-    if (!content) return;
+    if (!content && !attachment) return;
+    if (uploading) return;
 
     if (editingMessage) {
       emit('message:edit', { messageId: editingMessage.message_id, content });
       onCancelEdit();
-    } else {
-      emit('message:send', { channelId, content }, (res) => {
-        if (res?.error) console.error('Send error:', res.error);
-      });
+      setText('');
+      return;
     }
 
+    // Upload attachment first, then send message
+    let attachData = null;
+    if (attachment?.file) {
+      setUploading(true);
+      try {
+        attachData = await discussService.uploadAttachment(attachment.file);
+      } catch (err) {
+        console.error('Upload failed:', err);
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
+    }
+
+    emit('message:send', {
+      channelId,
+      content: content || undefined,
+      ...(attachData && {
+        attachmentUrl: attachData.url,
+        attachmentType: attachData.type,
+        attachmentName: attachData.name,
+        attachmentSize: attachData.size,
+      }),
+    }, (res) => { if (res?.error) console.error('Send error:', res.error); });
+
     setText('');
+    removeAttachment();
     setMentionQuery(null);
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
     if (e.key === 'Escape') {
-      if (mentionQuery) {
-        setMentionQuery(null);
-      } else if (editingMessage) {
-        onCancelEdit();
-        setText('');
-      }
+      if (mentionQuery) setMentionQuery(null);
+      else if (editingMessage) { onCancelEdit(); setText(''); }
     }
   };
 
+  const canSend = (text.trim() || attachment) && !uploading;
+
   return (
     <div className="relative border-t border-gray-200 bg-white p-3">
+      {/* Hidden file input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+        className="hidden"
+      />
+
+      {/* Edit banner */}
       {editingMessage && (
         <div className="flex items-center gap-2 mb-2 px-2 py-1 bg-amber-50 rounded-lg text-sm">
           <Pencil className="w-3.5 h-3.5 text-amber-500" />
@@ -770,37 +1022,82 @@ const MessageComposer = memo(({ channelId, members, deals, onSendViaSocket, edit
         </div>
       )}
 
-      <MentionPopup
-        items={filteredItems}
-        type={mentionQuery?.type}
-        onSelect={handleMentionSelect}
-        position={0}
-      />
+      {/* Attachment preview */}
+      <AttachmentPreview attachment={attachment} onRemove={removeAttachment} />
+
+      {/* Recording indicator */}
+      {recording && (
+        <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl">
+          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          <span className="text-sm text-red-600 font-medium">Recording…</span>
+          <span className="text-sm text-red-500 font-mono">
+            {String(Math.floor(recSeconds / 60)).padStart(2, '0')}:{String(recSeconds % 60).padStart(2, '0')}
+          </span>
+          <button onClick={stopRecording} className="ml-auto px-2 py-1 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600">
+            Stop & Send
+          </button>
+        </div>
+      )}
+
+      <MentionPopup items={filteredItems} type={mentionQuery?.type} onSelect={handleMentionSelect} position={0} />
 
       <div className="flex items-end gap-2">
+        {/* Attach file button */}
+        <button
+          onClick={openFilePicker}
+          disabled={recording || uploading}
+          className="p-2 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 disabled:opacity-40"
+          title="Attach file or image"
+        >
+          <Paperclip className="w-5 h-5" />
+        </button>
+
+        {/* Mic button */}
+        <button
+          onClick={recording ? stopRecording : startRecording}
+          disabled={!!attachment || uploading}
+          className={`p-2 rounded-xl transition-colors flex-shrink-0 disabled:opacity-40 ${
+            recording
+              ? 'bg-red-100 text-red-500 hover:bg-red-200'
+              : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
+          }`}
+          title={recording ? 'Stop recording' : 'Record voice message'}
+        >
+          {recording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+        </button>
+
+        {/* Text input */}
         <textarea
           ref={inputRef}
           value={text}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message... Use @ to mention someone, # to reference a deal"
+          placeholder={recording ? 'Recording…' : 'Type a message… @ mention, # deal'}
+          disabled={recording}
           rows={1}
-          className="flex-1 resize-none border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none max-h-32 overflow-y-auto"
+          className="flex-1 resize-none border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none max-h-32 overflow-y-auto disabled:bg-gray-50"
           style={{ minHeight: '42px' }}
         />
+
+        {/* Send button */}
         <button
           onClick={handleSend}
-          disabled={!text.trim()}
+          disabled={!canSend}
           className="p-2.5 bg-sky-500 text-white rounded-xl hover:bg-sky-600 disabled:opacity-40 transition-colors flex-shrink-0"
         >
-          <Send className="w-4 h-4" />
+          {uploading
+            ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            : <Send className="w-4 h-4" />
+          }
         </button>
       </div>
+
       <p className="text-[10px] text-gray-400 mt-1 px-1">
         <kbd className="bg-gray-100 px-1 rounded text-[10px]">Enter</kbd> to send ·{' '}
-        <kbd className="bg-gray-100 px-1 rounded text-[10px]">Shift+Enter</kbd> for newline ·{' '}
+        <kbd className="bg-gray-100 px-1 rounded text-[10px]">Shift+Enter</kbd> newline ·{' '}
         <kbd className="bg-gray-100 px-1 rounded text-[10px]">@</kbd> mention ·{' '}
-        <kbd className="bg-gray-100 px-1 rounded text-[10px]">#</kbd> deal
+        <kbd className="bg-gray-100 px-1 rounded text-[10px]">#</kbd> deal ·{' '}
+        <Paperclip className="inline w-2.5 h-2.5" /> attach
       </p>
     </div>
   );

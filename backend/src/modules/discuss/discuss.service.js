@@ -167,28 +167,33 @@ export const inviteMembers = async (channelId, inviterEmpId, inviterCompanyId, t
    MESSAGE SERVICES
 ===================================================== */
 
-export const sendMessage = async (channelId, empId, { content, parentMessageId }) => {
-  if (!content || typeof content !== "string") throw new Error("Message content is required");
+export const sendMessage = async (channelId, empId, { content, parentMessageId, attachmentUrl, attachmentType, attachmentName, attachmentSize }) => {
+  // Either text OR attachment is required
+  const hasText = content && typeof content === 'string' && content.trim().length > 0;
+  const hasAttachment = !!attachmentUrl;
+  if (!hasText && !hasAttachment) throw new Error('Message must have text or an attachment');
 
-  const clean = sanitiseText(content);
-  if (clean.length === 0) throw new Error("Message cannot be empty");
-  if (clean.length > MAX_MESSAGE_LENGTH) throw new Error(`Message max ${MAX_MESSAGE_LENGTH} chars`);
+  const clean = hasText ? sanitiseText(content) : null;
+  if (hasText && clean.length > MAX_MESSAGE_LENGTH) throw new Error(`Message max ${MAX_MESSAGE_LENGTH} chars`);
 
   const member = await repo.isMember(channelId, empId);
-  if (!member) throw new Error("You must be a channel member to send messages");
+  if (!member) throw new Error('You must be a channel member to send messages');
 
-  const messageId = await repo.createMessage(channelId, empId, clean, parentMessageId);
+  const attachment = attachmentUrl
+    ? { url: attachmentUrl, type: attachmentType, name: attachmentName, size: attachmentSize }
+    : {};
 
-  const mentions = parseMentions(clean);
-  if (mentions.length > 0) {
-    await repo.createMentions(messageId, mentions);
+  const messageId = await repo.createMessage(channelId, empId, clean, parentMessageId, attachment);
+
+  if (hasText) {
+    const mentions = parseMentions(clean);
+    if (mentions.length > 0) await repo.createMentions(messageId, mentions);
   }
 
   const message = await repo.getMessageById(messageId);
-  message.mentions = mentions;
+  message.mentions = [];
 
   await repo.updateLastRead(channelId, empId);
-
   return message;
 };
 

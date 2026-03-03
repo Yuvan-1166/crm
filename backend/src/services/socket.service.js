@@ -154,7 +154,7 @@ export const initSocketIO = (httpServer) => {
        MESSAGING
     --------------------------------------------------- */
 
-    socket.on("message:send", async ({ channelId, content, parentMessageId }, ack) => {
+    socket.on("message:send", async ({ channelId, content, parentMessageId, attachmentUrl, attachmentType, attachmentName, attachmentSize }, ack) => {
       try {
         if (!checkRateLimit(socket.id)) {
           return ack?.({ error: "Rate limit exceeded. Slow down." });
@@ -163,6 +163,10 @@ export const initSocketIO = (httpServer) => {
         const message = await discussService.sendMessage(channelId, empId, {
           content,
           parentMessageId: parentMessageId || null,
+          attachmentUrl: attachmentUrl || null,
+          attachmentType: attachmentType || null,
+          attachmentName: attachmentName || null,
+          attachmentSize: attachmentSize || null,
         });
 
         // Broadcast to everyone in the channel room (org-scoped namespace)
@@ -176,7 +180,7 @@ export const initSocketIO = (httpServer) => {
                 messageId: message.message_id,
                 channelId,
                 senderName: message.sender_name,
-                content: message.content.slice(0, 100),
+                content: message.content?.slice(0, 100) || '[attachment]',
               });
             }
           }

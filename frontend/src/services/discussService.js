@@ -16,6 +16,15 @@ export const browseChannels = async () => {
   return data;
 };
 
+export const uploadAttachment = async (file) => {
+  const form = new FormData();
+  form.append('file', file, file.name || 'recording');
+  const { data } = await api.post('/discuss/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data; // { url, type, name, size }
+};
+
 export const createChannel = async ({ name, description, isDefault = false, channelType = 'PUBLIC' }) => {
   const { data } = await api.post('/discuss/channels', { name, description, isDefault, channelType });
   return data;

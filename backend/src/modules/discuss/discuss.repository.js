@@ -234,11 +234,12 @@ export const acceptInvitations = async (channelId, inviteeEmpIds) => {
 /**
  * Create a message and return the full row with sender info
  */
-export const createMessage = async (channelId, senderEmpId, content, parentMessageId) => {
+export const createMessage = async (channelId, senderEmpId, content, parentMessageId, attachment = {}) => {
+  const { url = null, type = null, name = null, size = null } = attachment;
   const [result] = await db.execute(
-    `INSERT INTO discuss_messages (channel_id, sender_emp_id, content, parent_message_id)
-     VALUES (?, ?, ?, ?)`,
-    [channelId, senderEmpId, content, parentMessageId || null]
+    `INSERT INTO discuss_messages (channel_id, sender_emp_id, content, parent_message_id, attachment_url, attachment_type, attachment_name, attachment_size)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [channelId, senderEmpId, content || null, parentMessageId || null, url, type, name, size]
   );
   return result.insertId;
 };
@@ -253,6 +254,7 @@ export const getMessages = async (channelId, limit = 50, before = null) => {
   let query = `
     SELECT m.message_id, m.channel_id, m.sender_emp_id, m.content,
            m.parent_message_id, m.is_edited, m.is_deleted, m.created_at, m.updated_at,
+           m.attachment_url, m.attachment_type, m.attachment_name, m.attachment_size,
            e.name AS sender_name, e.email AS sender_email, e.role AS sender_role
     FROM discuss_messages m
     JOIN employees e ON e.emp_id = m.sender_emp_id
@@ -275,7 +277,7 @@ export const getMessages = async (channelId, limit = 50, before = null) => {
  */
 export const getMessageById = async (messageId) => {
   const [rows] = await db.execute(
-    `SELECT m.*, e.name AS sender_name, e.email AS sender_email
+    `SELECT m.*, e.name AS sender_name, e.email AS sender_email, e.role AS sender_role
      FROM discuss_messages m
      JOIN employees e ON e.emp_id = m.sender_emp_id
      WHERE m.message_id = ?`,

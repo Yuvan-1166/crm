@@ -1,5 +1,35 @@
 import * as discussService from "./discuss.service.js";
 import { getIO } from "../../services/socket.service.js";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/* =====================================================
+   FILE UPLOAD CONTROLLER
+===================================================== */
+
+/**
+ * POST /discuss/upload
+ * Expects multipart/form-data with field name "file"
+ * Returns { url, type, name, size } to be included in sendMessage body
+ */
+export const uploadAttachment = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file provided' });
+    }
+    // Build the public URL — served by express.static('/uploads')
+    const relativePath = `/uploads/discuss/${req.file.filename}`;
+    res.json({
+      url: relativePath,
+      type: req.file.mimetype,
+      name: req.file.originalname,
+      size: req.file.size,
+    });
+  } catch (error) { next(error); }
+};
 
 /* =====================================================
    CHANNEL CONTROLLERS
