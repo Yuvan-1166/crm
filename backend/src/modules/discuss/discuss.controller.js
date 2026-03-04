@@ -1,5 +1,6 @@
 import * as discussService from "./discuss.service.js";
 import { getIO } from "../../services/socket.service.js";
+import * as livekitService from "../../services/livekit.service.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -250,5 +251,35 @@ export const searchMessages = async (req, res, next) => {
     const { q } = req.query;
     const results = await discussService.searchMessages(req.user.companyId, req.user.empId, q);
     res.json(results);
+  } catch (error) { next(error); }
+};
+
+/* =====================================================
+   CALL CONTROLLERS (LiveKit Audio Calls)
+===================================================== */
+
+/**
+ * POST /channels/:channelId/call/token
+ * Generates a LiveKit access token for the requesting user to join
+ * the audio call room for a specific channel.
+ * Returns { token, wsUrl, roomName }
+ */
+export const getCallToken = async (req, res, next) => {
+  try {
+    const channelId = parseInt(req.params.channelId);
+    const { empId, companyId, name } = req.user;
+
+    // Verify channel membership before issuing a token
+    const channel = await discussService.getChannel(channelId, empId);
+    if (!channel) {
+      return res.status(403).json({ message: "Not a member of this channel" });
+    }
+
+    const roomName = livekitService.buildRoomName(companyId, channelId);
+    const identity = `emp-${empId}`;
+    const token = await livekitService.generateToken(roomName, identity, name || `Employee ${empId}`);
+    const wsUrl = livekitService.getWsUrl();
+
+    res.json({ token, wsUrl, roomName });
   } catch (error) { next(error); }
 };

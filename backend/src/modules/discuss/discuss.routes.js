@@ -116,6 +116,13 @@ router.delete("/messages/:messageId", discussController.deleteMessage);
 router.get("/messages/:messageId/thread", discussController.getThread);
 
 /* =====================================================
+   CALL ROUTES (LiveKit Audio Calls)
+===================================================== */
+
+// Get a LiveKit token to join the channel's audio call room
+router.post("/channels/:channelId/call/token", discussController.getCallToken);
+
+/* =====================================================
    MENTION & SEARCH ROUTES
 ===================================================== */
 

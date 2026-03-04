@@ -252,6 +252,36 @@ export const initSocketIO = (httpServer) => {
     });
 
     /* ---------------------------------------------------
+       AUDIO CALL SIGNALING (LiveKit)
+       — Signaling only: actual audio goes through LiveKit Cloud.
+       — call:start notifies all channel members that a call has begun.
+       — call:end notifies all channel members that the call ended.
+    --------------------------------------------------- */
+
+    socket.on("call:start", ({ channelId, callerName, channelName }) => {
+      socket.to(`channel:${channelId}`).emit("call:start", {
+        channelId,
+        channelName: channelName || "",
+        callerName: callerName || socket.user.name || "Someone",
+        callerEmpId: empId,
+      });
+    });
+
+    socket.on("call:end", ({ channelId }) => {
+      socket.to(`channel:${channelId}`).emit("call:end", {
+        channelId,
+        empId,
+      });
+    });
+
+    socket.on("call:reject", ({ channelId }) => {
+      socket.to(`channel:${channelId}`).emit("call:reject", {
+        channelId,
+        empId,
+      });
+    });
+
+    /* ---------------------------------------------------
        DISCONNECT
     --------------------------------------------------- */
 

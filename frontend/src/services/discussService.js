@@ -125,3 +125,15 @@ export const searchMessages = async (query) => {
   const { data } = await api.get('/discuss/search', { params: { q: query } });
   return data;
 };
+
+// ---- Audio Calls (LiveKit) ----
+
+/**
+ * Get a LiveKit token to join the audio call room for a channel
+ * @param {number} channelId
+ * @returns {Promise<{ token: string, wsUrl: string, roomName: string }>}
+ */
+export const getCallToken = async (channelId) => {
+  const { data } = await api.post(`/discuss/channels/${channelId}/call/token`);
+  return data;
+};

@@ -2,10 +2,13 @@ import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
 import {
   Hash, Lock, Plus, Search, Users, X, Send, Pencil, Trash2,
   MessageSquare, AtSign, ChevronDown, UserPlus, Check, Bell,
-  Paperclip, Mic, MicOff, FileDown, Music, Image as ImageIcon
+  Paperclip, Mic, MicOff, FileDown, Music, Image as ImageIcon,
+  Phone
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket, useSocketEvent } from '../../context/SocketContext';
+import { useAudioCall } from './AudioCallProvider';
+import { ActiveCallBar, CallSystemMessage } from './AudioCallUI';
 import * as discussService from '../../services/discussService';
 
 // Base URL for serving uploaded files (backend static route)
@@ -1108,7 +1111,7 @@ MessageComposer.displayName = 'MessageComposer';
    MESSAGE LIST (with infinite scroll)
 ===================================================== */
 
-const MessageList = memo(({ messages, currentEmpId, onEdit, onDelete, onReply, onLoadMore, hasMore, loading }) => {
+const MessageList = memo(({ messages, currentEmpId, channelId, channelName, onEdit, onDelete, onReply, onLoadMore, hasMore, loading }) => {
   const bottomRef = useRef(null);
   const containerRef = useRef(null);
   const prevScrollHeightRef = useRef(0);
@@ -1152,7 +1155,12 @@ const MessageList = memo(({ messages, currentEmpId, onEdit, onDelete, onReply, o
         groups.push({ type: 'date', date });
         lastDate = date;
       }
-      groups.push({ type: 'message', data: msg });
+      // Check if this is a call system message
+      if (msg.isCallEvent) {
+        groups.push({ type: 'call', data: msg });
+      } else {
+        groups.push({ type: 'message', data: msg });
+      }
     }
     return groups;
   }, [messages]);
@@ -1177,6 +1185,16 @@ const MessageList = memo(({ messages, currentEmpId, onEdit, onDelete, onReply, o
               <span className="text-[11px] font-medium text-gray-400">{item.date}</span>
               <div className="flex-1 border-t border-gray-200" />
             </div>
+          );
+        }
+        if (item.type === 'call') {
+          return (
+            <CallSystemMessage
+              key={`call-${item.data.callEventId}`}
+              message={item.data}
+              channelId={channelId}
+              channelName={channelName}
+            />
           );
         }
         const msg = item.data;
@@ -1210,7 +1228,7 @@ MessageList.displayName = 'MessageList';
    CHANNEL HEADER
 ===================================================== */
 
-const ChannelHeader = memo(({ channel, memberCount, onMembersClick, onSearchClick }) => {
+const ChannelHeader = memo(({ channel, memberCount, onMembersClick, onSearchClick, onCallClick, isInCall }) => {
   if (!channel) return null;
   const Icon = channel.channel_type === 'PRIVATE' ? Lock : Hash;
 
@@ -1227,6 +1245,18 @@ const ChannelHeader = memo(({ channel, memberCount, onMembersClick, onSearchClic
         )}
       </div>
       <div className="flex items-center gap-1">
+        {/* Audio Call Button */}
+        <button
+          onClick={onCallClick}
+          className={`p-2 rounded-lg transition-colors ${
+            isInCall
+              ? 'bg-green-100 text-green-600 hover:bg-green-200'
+              : 'hover:bg-gray-100 text-gray-500'
+          }`}
+          title={isInCall ? 'In call' : 'Start audio call'}
+        >
+          <Phone className="w-4 h-4" />
+        </button>
         <button onClick={onSearchClick} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Search">
           <Search className="w-4 h-4 text-gray-500" />
         </button>
@@ -1342,6 +1372,14 @@ const DiscussView = () => {
   const { user } = useAuth();
   const { connected, emit } = useSocket();
 
+  // Audio call context (provided by AudioCallProvider in DiscussPage)
+  let audioCall = null;
+  try {
+    audioCall = useAudioCall();
+  } catch {
+    // AudioCallProvider not mounted — calls disabled
+  }
+
   const [channels, setChannels] = useState([]);
   const [activeChannelId, setActiveChannelId] = useState(null);
   const [activeChannel, setActiveChannel] = useState(null);
@@ -1356,6 +1394,15 @@ const DiscussView = () => {
   const [editingMessage, setEditingMessage] = useState(null);
   const [typingUsers, setTypingUsers] = useState([]);
   const [pendingInvite, setPendingInvite] = useState(null); // for toast notification
+
+  /**
+   * Start an audio call on the current channel (WhatsApp-style)
+   */
+  const handleStartCall = useCallback(async () => {
+    if (!audioCall || !activeChannelId || !activeChannel) return;
+    if (audioCall.callState !== 'idle') return;
+    await audioCall.startCall(activeChannelId, activeChannel.name, user?.name);
+  }, [audioCall, activeChannelId, activeChannel, user]);
 
   useEffect(() => {
     loadChannels();
@@ -1493,12 +1540,45 @@ const DiscussView = () => {
     setPendingInvite(payload); // Show invite banner
   }, []);
 
+  /**
+   * Inject a call system message into the messages list for the active channel.
+   * These are virtual (not stored in DB) — they appear in the chat log so users
+   * can see call activity and join ongoing calls.
+   */
+  const handleCallStartInChat = useCallback((data) => {
+    if (data.channelId !== activeChannelId) return;
+    const callMsg = {
+      isCallEvent: true,
+      callEventId: `call-start-${data.channelId}-${Date.now()}`,
+      callType: 'start',
+      callerName: data.callerName || 'Someone',
+      callerEmpId: data.callerEmpId,
+      channelId: data.channelId,
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, callMsg]);
+  }, [activeChannelId]);
+
+  const handleCallEndInChat = useCallback((data) => {
+    if (data.channelId !== activeChannelId) return;
+    const callMsg = {
+      isCallEvent: true,
+      callEventId: `call-end-${data.channelId}-${Date.now()}`,
+      callType: 'end',
+      channelId: data.channelId,
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, callMsg]);
+  }, [activeChannelId]);
+
   useSocketEvent('message:new', handleNewMessage);
   useSocketEvent('message:edited', handleEditedMessage);
   useSocketEvent('message:deleted', handleDeletedMessage);
   useSocketEvent('typing:start', handleTypingStart);
   useSocketEvent('typing:stop', handleTypingStop);
   useSocketEvent('member:invited', handleMemberInvited);
+  useSocketEvent('call:start', handleCallStartInChat);
+  useSocketEvent('call:end', handleCallEndInChat);
 
   /* ---------------------------------------------------
      ACTION HANDLERS
@@ -1569,11 +1649,18 @@ const DiscussView = () => {
               memberCount={members.length}
               onMembersClick={() => setShowMembers(prev => !prev)}
               onSearchClick={() => setShowBrowse(true)}
+              onCallClick={handleStartCall}
+              isInCall={audioCall?.callState === 'active' && audioCall?.callChannelId === activeChannelId}
             />
+
+            {/* Active Call Bar — shown inline when there's an ongoing call in this channel */}
+            <ActiveCallBar channelId={activeChannelId} channelName={activeChannel?.name} />
 
             <MessageList
               messages={messages}
               currentEmpId={user?.emp_id}
+              channelId={activeChannelId}
+              channelName={activeChannel?.name}
               onEdit={handleEdit}
               onDelete={handleDelete}
               onReply={handleReply}

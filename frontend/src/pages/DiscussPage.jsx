@@ -1,14 +1,20 @@
 import DiscussView from '../components/discuss/DiscussView';
+import { AudioCallProvider } from '../components/discuss/AudioCallProvider';
+import { CallOverlay } from '../components/discuss/AudioCallUI';
 
 /**
- * DiscussPage — Team Chat (Discord-like)
- * Renders inside DashboardLayout via React Router <Outlet>
+ * DiscussPage — Team Chat (Discord-like) with WhatsApp-style audio calls.
+ * Wraps DiscussView with AudioCallProvider for call state management,
+ * and renders the full-screen call overlay at this level.
  */
 const DiscussPage = () => {
   return (
-    <div className="h-[calc(100vh-4rem)] p-4">
-      <DiscussView />
-    </div>
+    <AudioCallProvider>
+      <div className="h-[calc(100vh-4rem)] p-4">
+        <DiscussView />
+      </div>
+      <CallOverlay />
+    </AudioCallProvider>
   );
 };
 
