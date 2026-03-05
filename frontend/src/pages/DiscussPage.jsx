@@ -10,7 +10,7 @@ import { CallOverlay } from '../components/discuss/AudioCallUI';
 const DiscussPage = () => {
   return (
     <AudioCallProvider>
-      <div className="h-[calc(100vh-4rem)] p-4">
+      <div className="h-[calc(100vh-4rem)] -m-4 md:-m-6">
         <DiscussView />
       </div>
       <CallOverlay />

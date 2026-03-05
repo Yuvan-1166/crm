@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Plane,
   Play,
@@ -12,6 +12,9 @@ import {
   RefreshCw,
   Settings,
   Activity,
+  ChevronDown,
+  ChevronUp,
+  Eye,
 } from 'lucide-react';
 import {
   startAutopilot,
@@ -21,7 +24,22 @@ import {
   getRAGStatus,
 } from '../../services/outreachService';
 
-const AutoPilot = () => {
+/** Format a date/ISO string to IST display */
+const formatIST = (dateStr, options = {}) => {
+  if (!dateStr) return '';
+  const defaults = { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true };
+  return new Date(dateStr).toLocaleTimeString('en-IN', { ...defaults, ...options });
+};
+
+const formatISTFull = (dateStr) => {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  });
+};
+
+const AutoPilot = ({ onEmailsSent }) => {
   const [status, setStatus] = useState(null);
   const [log, setLog] = useState([]);
   const [ragStatus, setRagStatus] = useState(null);
@@ -30,19 +48,22 @@ const AutoPilot = () => {
   const [error, setError] = useState(null);
   const [intervalMinutes, setIntervalMinutes] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
+  const [expandedEntry, setExpandedEntry] = useState(null);
 
-  useEffect(() => {
-    loadData();
-    // Refresh log every 30 seconds when active
-    const interval = setInterval(() => {
-      if (status?.isActive) {
-        loadLog();
-      }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [status?.isActive]);
+  // Use ref to track isActive for interval callback (avoids stale closure)
+  const isActiveRef = useRef(false);
+  const initialLoadDone = useRef(false);
 
-  const loadData = async () => {
+  const loadLog = useCallback(async () => {
+    try {
+      const logData = await getAutopilotLog(20);
+      setLog(logData.log || []);
+    } catch (err) {
+      console.error('Failed to refresh log:', err);
+    }
+  }, []);
+
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const [statusData, logData, ragData] = await Promise.all([
@@ -51,6 +72,7 @@ const AutoPilot = () => {
         getRAGStatus(),
       ]);
       setStatus(statusData);
+      isActiveRef.current = statusData.isActive;
       setLog(logData.log || []);
       setRagStatus(ragData);
       if (statusData.intervalMinutes) {
@@ -61,29 +83,42 @@ const AutoPilot = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadLog = async () => {
-    try {
-      const logData = await getAutopilotLog(20);
-      setLog(logData.log || []);
-    } catch (err) {
-      console.error('Failed to refresh log:', err);
+  // Load data once on mount, set up polling independent of state
+  useEffect(() => {
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      loadData();
     }
-  };
+    const interval = setInterval(() => {
+      if (isActiveRef.current) {
+        loadLog();
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [loadData, loadLog]);
 
   const handleToggle = async () => {
+    if (toggling) return; // extra guard
     try {
       setToggling(true);
       setError(null);
 
-      if (status?.isActive) {
+      if (isActiveRef.current) {
         await stopAutopilot();
+        isActiveRef.current = false;
       } else {
         await startAutopilot(intervalMinutes);
+        isActiveRef.current = true;
       }
 
+      // Small delay to let backend process first batch
+      await new Promise(r => setTimeout(r, 500));
       await loadData();
+
+      // Notify parent to invalidate sent cache since autopilot may have sent emails
+      if (onEmailsSent) onEmailsSent();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to toggle autopilot');
     } finally {
@@ -127,7 +162,7 @@ const AutoPilot = () => {
               </p>
               {isActive && status.startedAt && (
                 <p className="text-xs text-green-600 mt-1">
-                  Started: {new Date(status.startedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                  Started: {formatISTFull(status.startedAt)}
                 </p>
               )}
             </div>
@@ -279,7 +314,7 @@ const AutoPilot = () => {
             <p className="text-sm mt-1">Start autopilot to begin processing emails</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+          <div className="divide-y divide-gray-100 max-h-[32rem] overflow-y-auto">
             {log.map((entry) => (
               <div key={entry.id} className="px-4 py-3 hover:bg-gray-50">
                 <div className="flex items-start justify-between">
@@ -291,7 +326,7 @@ const AutoPilot = () => {
                     ) : (
                       <XCircle className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
                     )}
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-gray-800 truncate">
                         {entry.subject || 'No Subject'}
                       </p>
@@ -302,6 +337,21 @@ const AutoPilot = () => {
                         <p className="text-xs text-gray-400 mt-1 truncate">
                           Intent: {entry.intent}
                         </p>
+                      )}
+                      {/* View Reply button */}
+                      {!!entry.reply_sent && entry.reply_body && (
+                        <button
+                          onClick={() => setExpandedEntry(expandedEntry === entry.id ? null : entry.id)}
+                          className="mt-1.5 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                        >
+                          <Eye className="w-3 h-3" />
+                          {expandedEntry === entry.id ? 'Hide Reply' : 'View Reply'}
+                          {expandedEntry === entry.id ? (
+                            <ChevronUp className="w-3 h-3" />
+                          ) : (
+                            <ChevronDown className="w-3 h-3" />
+                          )}
+                        </button>
                       )}
                     </div>
                   </div>
@@ -316,10 +366,25 @@ const AutoPilot = () => {
                       {entry.reply_sent ? 'Replied' : entry.needs_reply ? 'Pending' : 'Skipped'}
                     </span>
                     <p className="text-xs text-gray-400 mt-1">
-                      {new Date(entry.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}
+                      {formatISTFull(entry.created_at)}
                     </p>
+                    {entry.reply_sent_at && (
+                      <p className="text-xs text-green-500 mt-0.5">
+                        Sent: {formatIST(entry.reply_sent_at)}
+                      </p>
+                    )}
                   </div>
                 </div>
+                {/* Expanded Reply Body */}
+                {expandedEntry === entry.id && entry.reply_body && (
+                  <div className="mt-3 ml-8 p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
+                    <p className="text-xs font-medium text-indigo-700 mb-2">AI Generated Reply:</p>
+                    <div
+                      className="text-sm text-gray-700 prose prose-sm max-w-none [&_*]:text-sm"
+                      dangerouslySetInnerHTML={{ __html: entry.reply_body }}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>

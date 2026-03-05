@@ -300,10 +300,10 @@ const processInbox = async (empId, companyId) => {
           removeLabels: ["UNREAD"],
         });
 
-        // Update log with reply sent
+        // Update log with reply sent and body
         await db.query(
-          `UPDATE autopilot_log SET reply_sent = 1, reply_sent_at = NOW() WHERE emp_id = ? AND message_id = ?`,
-          [empId, email.id]
+          `UPDATE autopilot_log SET reply_sent = 1, reply_body = ?, reply_sent_at = NOW() WHERE emp_id = ? AND message_id = ?`,
+          [replyBody, empId, email.id]
         );
 
         console.log(`✅ [AutoPilot] Reply sent to: ${email.from}`);

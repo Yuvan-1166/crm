@@ -13,13 +13,14 @@ if (!DATABASE_URL) {
 }
 
 // Create connection pool using URI
-const pool = mysql.createPool(DATABASE_URL, {
+const pool = mysql.createPool({
+  uri: DATABASE_URL,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
   timezone: 'Z', // Treat all DATETIME/TIMESTAMP columns as UTC
   ssl: {
-    rejectUnauthorized: true, // required for Aiven
+    rejectUnauthorized: false, // Aiven uses self-signed certificates
   },
 });
 

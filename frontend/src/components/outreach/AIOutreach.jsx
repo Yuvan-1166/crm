@@ -14,6 +14,14 @@ import {
   Eye,
   X,
   Filter,
+  ArrowRight,
+  ArrowLeft,
+  Mail,
+  Zap,
+  BookOpen,
+  UserCheck,
+  MailCheck,
+  Search,
 } from 'lucide-react';
 import {
   uploadDocument,
@@ -33,6 +41,18 @@ const STATUS_OPTIONS = [
   { value: 'CUSTOMER', label: 'Customer' },
 ];
 
+const STEPS = [
+  { num: 1, label: 'Setup & Select', icon: UserCheck },
+  { num: 2, label: 'Write Intent', icon: BookOpen },
+  { num: 3, label: 'Review & Send', icon: MailCheck },
+];
+
+const TEMP_STYLES = {
+  HOT: 'bg-red-50 text-red-600 border-red-200',
+  WARM: 'bg-amber-50 text-amber-600 border-amber-200',
+  COLD: 'bg-sky-50 text-sky-600 border-sky-200',
+};
+
 const AIOutreach = () => {
   // State
   const [activeStep, setActiveStep] = useState(1);
@@ -49,6 +69,7 @@ const AIOutreach = () => {
   const [toStatus, setToStatus] = useState('MQL');
   const [contacts, setContacts] = useState([]);
   const [selectedContacts, setSelectedContacts] = useState([]);
+  const [contactSearch, setContactSearch] = useState('');
 
   // Email Generation State
   const [employeeIntent, setEmployeeIntent] = useState('');
@@ -203,78 +224,101 @@ const AIOutreach = () => {
     setSuccess(null);
   };
 
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      {/* Header */}
-      <div className="border-b border-gray-200 p-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-400 to-indigo-600 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-800">AI Outreach</h2>
-            <p className="text-sm text-gray-500">Generate personalized emails using AI</p>
-          </div>
-        </div>
-      </div>
+  const filteredContacts = contacts.filter((c) => {
+    if (!contactSearch.trim()) return true;
+    const q = contactSearch.toLowerCase();
+    return c.name?.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q);
+  });
 
-      {/* Alerts */}
+  const successCount = generatedEmails.filter((e) => e.success).length;
+  const failCount = generatedEmails.length - successCount;
+
+  return (
+    <div className="space-y-5">
+      {/* Alerts — floating toast style */}
       {error && (
-        <div className="mx-4 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-red-700">{error}</p>
-          <button onClick={() => setError(null)} className="ml-auto">
-            <X className="w-4 h-4 text-red-500" />
+        <div className="flex items-start gap-3 p-3.5 bg-red-50 border border-red-200 rounded-xl animate-slide-in">
+          <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+            <AlertCircle className="w-4 h-4 text-red-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-red-800">Something went wrong</p>
+            <p className="text-xs text-red-600 mt-0.5">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="p-1 hover:bg-red-100 rounded-lg transition-colors flex-shrink-0">
+            <X className="w-4 h-4 text-red-400" />
           </button>
         </div>
       )}
 
       {success && (
-        <div className="mx-4 mt-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-start gap-2">
-          <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-green-700">{success}</p>
+        <div className="flex items-start gap-3 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl animate-slide-in">
+          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+            <CheckCircle className="w-4 h-4 text-emerald-500" />
+          </div>
+          <p className="text-sm font-medium text-emerald-800 self-center">{success}</p>
         </div>
       )}
 
-      {/* Steps Indicator */}
-      <div className="px-4 py-3 border-b border-gray-100">
-        <div className="flex items-center gap-2">
-          {[1, 2, 3].map((step) => (
-            <div key={step} className="flex items-center">
-              <button
-                onClick={() => step < activeStep && setActiveStep(step)}
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
-                  activeStep >= step
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 text-gray-400'
-                }`}
-              >
-                {step}
-              </button>
-              {step < 3 && (
-                <ChevronRight className="w-4 h-4 text-gray-300 mx-1" />
-              )}
-            </div>
-          ))}
-          <span className="ml-3 text-sm text-gray-600">
-            {activeStep === 1 && 'Setup & Select Contacts'}
-            {activeStep === 2 && 'Write Intent & Generate'}
-            {activeStep === 3 && 'Review & Send'}
-          </span>
+      {/* Stepper — horizontal pill-style */}
+      <div className="bg-white rounded-xl border border-gray-200 p-1.5">
+        <div className="flex items-center">
+          {STEPS.map((step, idx) => {
+            const Icon = step.icon;
+            const isActive = activeStep === step.num;
+            const isDone = activeStep > step.num;
+            return (
+              <div key={step.num} className="flex items-center flex-1">
+                <button
+                  onClick={() => step.num < activeStep && setActiveStep(step.num)}
+                  disabled={step.num > activeStep}
+                  className={`flex items-center gap-2.5 w-full px-4 py-2.5 rounded-lg transition-all text-left ${
+                    isActive
+                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
+                      : isDone
+                      ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 cursor-pointer'
+                      : 'text-gray-400 cursor-default'
+                  }`}
+                >
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
+                    isActive
+                      ? 'bg-white/20 text-white'
+                      : isDone
+                      ? 'bg-indigo-100 text-indigo-600'
+                      : 'bg-gray-100 text-gray-400'
+                  }`}>
+                    {isDone ? <CheckCircle className="w-4 h-4" /> : step.num}
+                  </div>
+                  <span className="text-sm font-medium truncate">{step.label}</span>
+                </button>
+                {idx < STEPS.length - 1 && (
+                  <ChevronRight className={`w-4 h-4 mx-1 flex-shrink-0 ${
+                    isDone ? 'text-indigo-300' : 'text-gray-300'
+                  }`} />
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      <div className="p-4">
-        {/* Step 1: Setup & Select Contacts */}
-        {activeStep === 1 && (
-          <div className="space-y-6">
-            {/* RAG Documents Section */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-medium text-gray-800 flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  Company Documents (RAG)
-                </h3>
+      {/* ======== STEP 1: Setup & Select Contacts ======== */}
+      {activeStep === 1 && (
+        <div className="space-y-5">
+          {/* Two-column layout: Documents | Filter */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Company Documents Card */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center">
+                    <FileText className="w-4 h-4 text-violet-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-800">Knowledge Base</h3>
+                    <p className="text-[11px] text-gray-400">RAG documents for AI context</p>
+                  </div>
+                </div>
                 <label className="cursor-pointer">
                   <input
                     type="file"
@@ -283,329 +327,464 @@ const AIOutreach = () => {
                     className="hidden"
                     disabled={uploading}
                   />
-                  <span className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white text-xs font-medium rounded-lg hover:bg-violet-700 transition-colors shadow-sm">
                     {uploading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     ) : (
-                      <Upload className="w-4 h-4" />
+                      <Upload className="w-3.5 h-3.5" />
                     )}
                     Upload
                   </span>
                 </label>
               </div>
 
-              {ragStatus?.documents?.length > 0 ? (
-                <div className="space-y-2">
-                  {ragStatus.documents.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="flex items-center justify-between bg-white p-2 rounded border border-gray-200"
-                    >
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-700">{doc.filename}</span>
-                        <span className="text-xs text-gray-400">
-                          ({doc.chunksCount} chunks)
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => handleDeleteDocument(doc.id)}
-                        className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500"
+              <div className="p-4">
+                {ragStatus?.documents?.length > 0 ? (
+                  <div className="space-y-2">
+                    {ragStatus.documents.map((doc) => (
+                      <div
+                        key={doc.id}
+                        className="group flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50/50 transition-all"
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                          <FileText className="w-4 h-4 text-gray-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-700 truncate">{doc.filename}</p>
+                          <p className="text-[11px] text-gray-400">{doc.chunksCount} chunks indexed</p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteDocument(doc.id)}
+                          className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                      <FileText className="w-5 h-5 text-gray-300" />
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">
-                  Upload company documents (PDF, DOCX, TXT) to enable AI-powered personalization.
-                </p>
-              )}
+                    <p className="text-sm text-gray-500 font-medium">No documents yet</p>
+                    <p className="text-xs text-gray-400 mt-1">Upload PDF, DOCX, or TXT files for AI context</p>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Status Threshold Filter */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="font-medium text-gray-800 flex items-center gap-2 mb-3">
-                <Filter className="w-4 h-4" />
-                Status Threshold
-              </h3>
-              <div className="flex items-center gap-4">
-                <div className="flex-1">
-                  <label className="block text-xs text-gray-500 mb-1">From Status</label>
-                  <select
-                    value={fromStatus}
-                    onChange={(e) => setFromStatus(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
-                  >
-                    {STATUS_OPTIONS.slice(0, -1).map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+            {/* Status Filter Card */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-gray-100">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+                  <Filter className="w-4 h-4 text-amber-500" />
                 </div>
-                <ChevronRight className="w-5 h-5 text-gray-400 mt-5" />
-                <div className="flex-1">
-                  <label className="block text-xs text-gray-500 mb-1">To Status</label>
-                  <select
-                    value={toStatus}
-                    onChange={(e) => setToStatus(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
-                  >
-                    {STATUS_OPTIONS.slice(1).map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-800">Target Audience</h3>
+                  <p className="text-[11px] text-gray-400">Filter contacts by pipeline status</p>
                 </div>
+              </div>
+
+              <div className="p-5">
+                <div className="flex items-end gap-3">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">From Status</label>
+                    <select
+                      value={fromStatus}
+                      onChange={(e) => setFromStatus(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:bg-white transition-colors"
+                    >
+                      {STATUS_OPTIONS.slice(0, -1).map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="pb-2.5">
+                    <ArrowRight className="w-5 h-5 text-gray-300" />
+                  </div>
+
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">To Status</label>
+                    <select
+                      value={toStatus}
+                      onChange={(e) => setToStatus(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:bg-white transition-colors"
+                    >
+                      {STATUS_OPTIONS.slice(1).map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 <button
                   onClick={loadContacts}
                   disabled={loading}
-                  className="mt-5 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-sm shadow-indigo-100"
                 >
                   {loading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <RefreshCw className="w-4 h-4" />
                   )}
-                  Load
+                  Load Contacts
                 </button>
+
+                {/* Quick stats */}
+                {contacts.length > 0 && (
+                  <div className="mt-4 flex items-center gap-3 p-3 bg-indigo-50/50 rounded-lg border border-indigo-100">
+                    <Users className="w-4 h-4 text-indigo-500" />
+                    <span className="text-sm text-indigo-700">
+                      <strong>{contacts.length}</strong> contacts found
+                    </span>
+                    {selectedContacts.length > 0 && (
+                      <span className="ml-auto text-xs font-medium text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">
+                        {selectedContacts.length} selected
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
+          </div>
 
-            {/* Contacts List */}
-            {contacts.length > 0 && (
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-medium text-gray-800 flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    Contacts ({contacts.length})
+          {/* Contacts List Card */}
+          {contacts.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center">
+                    <Users className="w-4 h-4 text-sky-500" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-gray-800">
+                    Contacts
+                    <span className="ml-1.5 text-xs font-normal text-gray-400">({contacts.length})</span>
                   </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search..."
+                      value={contactSearch}
+                      onChange={(e) => setContactSearch(e.target.value)}
+                      className="pl-8 pr-3 py-1.5 w-40 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:bg-white transition-colors"
+                    />
+                  </div>
                   <button
                     onClick={selectAllContacts}
-                    className="text-sm text-indigo-600 hover:text-indigo-700"
+                    className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"
                   >
                     {selectedContacts.length === contacts.length ? 'Deselect All' : 'Select All'}
                   </button>
                 </div>
-                <div className="max-h-64 overflow-y-auto space-y-2">
-                  {contacts.map((contact) => (
-                    <label
+              </div>
+
+              <div className="max-h-72 overflow-y-auto divide-y divide-gray-50">
+                {filteredContacts.map((contact) => {
+                  const isSelected = selectedContacts.includes(contact.contact_id);
+                  return (
+                    <div
                       key={contact.contact_id}
-                      className={`flex items-center gap-3 p-3 bg-white rounded-lg border cursor-pointer transition-colors ${
-                        selectedContacts.includes(contact.contact_id)
-                          ? 'border-indigo-500 bg-indigo-50'
-                          : 'border-gray-200 hover:border-gray-300'
+                      onClick={() => toggleContactSelection(contact.contact_id)}
+                      className={`flex items-center gap-3.5 px-5 py-3 cursor-pointer transition-colors ${
+                        isSelected ? 'bg-indigo-50/40' : 'hover:bg-gray-50'
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedContacts.includes(contact.contact_id)}
-                        onChange={() => toggleContactSelection(contact.contact_id)}
-                        className="w-4 h-4 text-indigo-600 rounded"
-                      />
+                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                        isSelected
+                          ? 'bg-indigo-600 border-indigo-600'
+                          : 'border-gray-300 bg-white'
+                      }`}>
+                        {isSelected && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                        isSelected
+                          ? 'bg-indigo-100 text-indigo-600'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {(contact.name || '?')[0].toUpperCase()}
+                      </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">
-                          {contact.name}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">{contact.email}</p>
+                        <p className="text-sm font-medium text-gray-800 truncate">{contact.name}</p>
+                        <p className="text-xs text-gray-400 truncate">{contact.email}</p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`px-2 py-0.5 text-xs rounded-full ${
-                            contact.temperature === 'HOT'
-                              ? 'bg-red-100 text-red-700'
-                              : contact.temperature === 'WARM'
-                              ? 'bg-orange-100 text-orange-700'
-                              : 'bg-blue-100 text-blue-700'
-                          }`}
-                        >
-                          {contact.temperature}
-                        </span>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
+                      <span className={`px-2 py-0.5 text-[11px] font-medium rounded-md border ${
+                        TEMP_STYLES[contact.temperature] || TEMP_STYLES.COLD
+                      }`}>
+                        {contact.temperature}
+                      </span>
+                    </div>
+                  );
+                })}
 
-            {/* Next Button */}
-            {selectedContacts.length > 0 && (
-              <div className="flex justify-end">
-                <button
-                  onClick={() => setActiveStep(2)}
-                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
-                >
-                  Next: Write Intent
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                {filteredContacts.length === 0 && contactSearch && (
+                  <div className="py-8 text-center">
+                    <p className="text-sm text-gray-400">No contacts match "{contactSearch}"</p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {/* Step 2: Write Intent & Generate */}
-        {activeStep === 2 && (
-          <div className="space-y-6">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="font-medium text-gray-800 mb-3">Your Intent / Instructions</h3>
-              <p className="text-sm text-gray-500 mb-3">
-                Describe what you want to communicate. The AI will use this along with company
-                documents to generate personalized emails.
-              </p>
+          {/* Next Step — sticky bottom bar */}
+          {selectedContacts.length > 0 && (
+<div className="sticky -bottom-4 z-10 bg-white border-t border-gray-200 -mx-4 -mb-4 px-5 py-3.5 flex items-center justify-between shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">              <span className="text-sm text-gray-500">
+                <strong className="text-gray-800">{selectedContacts.length}</strong> of {contacts.length} contacts selected
+              </span>
+              <button
+                onClick={() => setActiveStep(2)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-100"
+              >
+                Continue
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======== STEP 2: Write Intent & Generate ======== */}
+      {activeStep === 2 && (
+        <div className="space-y-5">
+          {/* Intent Card */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-gray-100">
+              <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center">
+                <Zap className="w-4 h-4 text-purple-500" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-800">Your Instructions</h3>
+                <p className="text-[11px] text-gray-400">Tell the AI what you want to communicate</p>
+              </div>
+            </div>
+            <div className="p-5">
               <textarea
                 value={employeeIntent}
                 onChange={(e) => setEmployeeIntent(e.target.value)}
                 placeholder="e.g., I want to introduce our new product features and schedule a demo call. Focus on how we can help them improve their workflow efficiency..."
-                className="w-full h-32 px-4 py-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 resize-none"
+                className="w-full h-36 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:bg-white resize-none transition-colors leading-relaxed"
               />
-            </div>
-
-            <div className="bg-indigo-50 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-indigo-800 mb-2">Summary</h4>
-              <ul className="text-sm text-indigo-700 space-y-1">
-                <li>• {selectedContacts.length} contacts selected</li>
-                <li>• Status transition: {fromStatus} → {toStatus}</li>
-                <li>• {ragStatus?.documentsCount || 0} company documents loaded</li>
-              </ul>
-            </div>
-
-            <div className="flex justify-between">
-              <button
-                onClick={() => setActiveStep(1)}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                Back
-              </button>
-              <button
-                onClick={handleGenerateEmails}
-                disabled={loading || !employeeIntent.trim()}
-                className="px-6 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all disabled:opacity-50 flex items-center gap-2"
-              >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Sparkles className="w-4 h-4" />
-                )}
-                Generate Emails
-              </button>
+              <p className="text-[11px] text-gray-400 mt-2">
+                The AI uses your instructions along with uploaded company documents to craft personalized emails for each contact.
+              </p>
             </div>
           </div>
-        )}
 
-        {/* Step 3: Review & Send */}
-        {activeStep === 3 && (
-          <div className="space-y-6">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="font-medium text-gray-800 mb-3">Generated Emails</h3>
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {generatedEmails.map((result, index) => (
-                  <div
-                    key={index}
-                    className={`p-3 rounded-lg border ${
-                      result.success
-                        ? 'bg-white border-gray-200'
-                        : 'bg-red-50 border-red-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        {result.success ? (
-                          <CheckCircle className="w-4 h-4 text-green-500" />
-                        ) : (
-                          <AlertCircle className="w-4 h-4 text-red-500" />
-                        )}
-                        <span className="font-medium text-sm text-gray-800">
-                          {result.contactName}
-                        </span>
-                        <span className="text-xs text-gray-500">{result.contactEmail}</span>
-                      </div>
-                      {result.success && (
-                        <button
-                          onClick={() => setPreviewEmail(result)}
-                          className="flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-700"
-                        >
-                          <Eye className="w-4 h-4" />
-                          Preview
-                        </button>
-                      )}
-                    </div>
-                    {result.success ? (
-                      <p className="text-sm text-gray-600 truncate">
-                        Subject: {result.email.subject}
-                      </p>
-                    ) : (
-                      <p className="text-sm text-red-600">{result.error}</p>
-                    )}
-                  </div>
-                ))}
+          {/* Summary Card */}
+          <div className="bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-100 p-5">
+            <h4 className="text-xs font-semibold text-indigo-600 uppercase tracking-wider mb-3">Campaign Summary</h4>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-white/70 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-indigo-700">{selectedContacts.length}</p>
+                <p className="text-[11px] text-indigo-500 mt-0.5">Recipients</p>
+              </div>
+              <div className="bg-white/70 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-indigo-700">{fromStatus}</p>
+                <p className="text-[11px] text-indigo-500 mt-0.5">→ {toStatus}</p>
+              </div>
+              <div className="bg-white/70 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-indigo-700">{ragStatus?.documentsCount || 0}</p>
+                <p className="text-[11px] text-indigo-500 mt-0.5">Documents</p>
               </div>
             </div>
+          </div>
 
-            {sendResults && (
-              <div className="bg-green-50 rounded-lg p-4">
-                <h4 className="font-medium text-green-800 mb-2">Send Results</h4>
-                <p className="text-sm text-green-700">
-                  Successfully sent {sendResults.summary.sent} of {sendResults.summary.total} emails
-                </p>
-              </div>
-            )}
-
-            <div className="flex justify-between">
-              <button
-                onClick={resetFlow}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                Start Over
-              </button>
-              {!sendResults && (
-                <button
-                  onClick={handleSendEmails}
-                  disabled={sending || generatedEmails.filter((e) => e.success).length === 0}
-                  className="px-6 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all disabled:opacity-50 flex items-center gap-2"
-                >
-                  {sending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
-                  Send All Emails
-                </button>
+          {/* Actions */}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setActiveStep(1)}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </button>
+            <button
+              onClick={handleGenerateEmails}
+              disabled={loading || !employeeIntent.trim()}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-medium rounded-xl hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-50 shadow-sm shadow-indigo-200"
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
               )}
-            </div>
+              Generate {selectedContacts.length} Emails
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Email Preview Modal */}
-      {previewEmail && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="font-semibold text-gray-800">Email Preview</h3>
-              <button
-                onClick={() => setPreviewEmail(null)}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-            <div className="p-4 overflow-y-auto max-h-[60vh]">
-              <div className="mb-4">
-                <p className="text-sm text-gray-500">To:</p>
-                <p className="text-gray-800">{previewEmail.contactEmail}</p>
-              </div>
-              <div className="mb-4">
-                <p className="text-sm text-gray-500">Subject:</p>
-                <p className="font-medium text-gray-800">{previewEmail.email.subject}</p>
+      {/* ======== STEP 3: Review & Send ======== */}
+      {activeStep === 3 && (
+        <div className="space-y-5">
+          {/* Stats strip */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                <Mail className="w-5 h-5 text-indigo-500" />
               </div>
               <div>
-                <p className="text-sm text-gray-500 mb-2">Body:</p>
-                <div className="bg-gray-50 rounded-lg p-4 whitespace-pre-wrap text-gray-700">
-                  {previewEmail.email.body}
+                <p className="text-lg font-bold text-gray-800">{generatedEmails.length}</p>
+                <p className="text-[11px] text-gray-400">Total Generated</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+                <CheckCircle className="w-5 h-5 text-emerald-500" />
+              </div>
+              <div>
+                <p className="text-lg font-bold text-gray-800">{successCount}</p>
+                <p className="text-[11px] text-gray-400">Ready to Send</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
+                <AlertCircle className="w-5 h-5 text-red-400" />
+              </div>
+              <div>
+                <p className="text-lg font-bold text-gray-800">{failCount}</p>
+                <p className="text-[11px] text-gray-400">Failed</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Generated Emails Card */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-gray-100">
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+                <MailCheck className="w-4 h-4 text-emerald-500" />
+              </div>
+              <h3 className="text-sm font-semibold text-gray-800">Generated Emails</h3>
+            </div>
+
+            <div className="max-h-80 overflow-y-auto divide-y divide-gray-50">
+              {generatedEmails.map((result, index) => (
+                <div
+                  key={index}
+                  className={`px-5 py-3.5 flex items-center gap-3.5 transition-colors ${
+                    result.success ? 'hover:bg-gray-50' : 'bg-red-50/40'
+                  }`}
+                >
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                    result.success ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-500'
+                  }`}>
+                    {result.success
+                      ? (result.contactName || '?')[0].toUpperCase()
+                      : <AlertCircle className="w-4 h-4" />
+                    }
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-800 truncate">{result.contactName}</span>
+                      <span className="text-xs text-gray-400 truncate">{result.contactEmail}</span>
+                    </div>
+                    {result.success ? (
+                      <p className="text-xs text-gray-500 truncate mt-0.5">
+                        {result.email.subject}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-red-500 mt-0.5">{result.error}</p>
+                    )}
+                  </div>
+
+                  {result.success && (
+                    <button
+                      onClick={() => setPreviewEmail(result)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex-shrink-0"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      Preview
+                    </button>
+                  )}
                 </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Send Results */}
+          {sendResults && (
+            <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-5 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                <CheckCircle className="w-6 h-6 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-emerald-800">Emails Sent Successfully</p>
+                <p className="text-xs text-emerald-600 mt-0.5">
+                  Delivered {sendResults.summary.sent} of {sendResults.summary.total} emails
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={resetFlow}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Start Over
+            </button>
+            {!sendResults && (
+              <button
+                onClick={handleSendEmails}
+                disabled={sending || successCount === 0}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white text-sm font-medium rounded-xl hover:from-emerald-600 hover:to-green-700 transition-all disabled:opacity-50 shadow-sm shadow-emerald-200"
+              >
+                {sending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                Send {successCount} Emails
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ======== Email Preview Modal ======== */}
+      {previewEmail && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+                  <Mail className="w-4.5 h-4.5 text-indigo-500" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-800">Email Preview</h3>
+                  <p className="text-xs text-gray-400">{previewEmail.contactName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPreviewEmail(null)}
+                className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+              >
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="px-6 py-5 overflow-y-auto max-h-[60vh] space-y-4">
+              <div className="flex items-center gap-3 text-sm">
+                <span className="text-gray-400 w-16 flex-shrink-0">To</span>
+                <span className="text-gray-700 font-medium">{previewEmail.contactEmail}</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <span className="text-gray-400 w-16 flex-shrink-0">Subject</span>
+                <span className="text-gray-800 font-semibold">{previewEmail.email.subject}</span>
+              </div>
+              <div className="h-px bg-gray-100" />
+              <div className="bg-gray-50 rounded-xl p-5 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                {previewEmail.email.body}
               </div>
             </div>
           </div>

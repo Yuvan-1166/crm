@@ -108,6 +108,12 @@ const GmailView = ({ isAdmin = false }) => {
     // Track if this is initial mount
     const isInitialMount = useRef(true);
 
+    // Callback for AutoPilot to invalidate sent cache after sending emails
+    const handleAutopilotEmailsSent = useCallback(() => {
+        invalidateCache('crm-sent');
+        setSentData({ emails: [], nextPageToken: null, loaded: false });
+    }, [invalidateCache]);
+
     // Selected email/draft for detail view
     const [selectedEmail, setSelectedEmail] = useState(null);
 
@@ -375,7 +381,7 @@ const GmailView = ({ isAdmin = false }) => {
     }
 
     return (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white h-[calc(100vh-4rem)] flex flex-col overflow-hidden -m-4 md:-m-6">
             {/* Header */}
             <div className="border-b border-gray-200 p-4">
                 <div className="flex items-center justify-between mb-4">
@@ -470,7 +476,7 @@ const GmailView = ({ isAdmin = false }) => {
             {/* Content - Keep-alive pattern: mount once and toggle visibility to preserve state */}
             {/* AI Outreach Tab - stays mounted after first visit */}
             {visitedTabs.has('ai-outreach') && (
-                <div className={`p-4 ${activeTab === 'ai-outreach' ? '' : 'hidden'}`}>
+                <div className={`flex-1 overflow-y-auto p-4 ${activeTab === 'ai-outreach' ? '' : 'hidden'}`}>
                     <Suspense fallback={<TabLoadingFallback isAdmin={isAdmin} />}>
                         <AIOutreach />
                     </Suspense>
@@ -479,16 +485,16 @@ const GmailView = ({ isAdmin = false }) => {
 
             {/* AutoPilot Tab - stays mounted after first visit */}
             {visitedTabs.has('autopilot') && (
-                <div className={`p-4 ${activeTab === 'autopilot' ? '' : 'hidden'}`}>
+                <div className={`flex-1 overflow-y-auto p-4 ${activeTab === 'autopilot' ? '' : 'hidden'}`}>
                     <Suspense fallback={<TabLoadingFallback isAdmin={isAdmin} />}>
-                        <AutoPilot />
+                        <AutoPilot onEmailsSent={handleAutopilotEmailsSent} />
                     </Suspense>
                 </div>
             )}
 
             {/* Email Tabs */}
-            <div className={`${activeTab !== 'ai-outreach' && activeTab !== 'autopilot' ? '' : 'hidden'}`}>
-                <div className="flex h-[calc(100vh-20rem)] min-h-[400px]">
+            <div className={`flex-1 min-h-0 ${activeTab !== 'ai-outreach' && activeTab !== 'autopilot' ? 'flex flex-col' : 'hidden'}`}>
+                <div className="flex flex-1 min-h-0">
                     {/* Email List */}
                     <div className={`${selectedEmail ? 'hidden lg:block' : ''} w-full lg:w-2/5 border-r border-gray-200 overflow-y-auto`}>
                         <EmailList
