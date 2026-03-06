@@ -116,7 +116,15 @@ app.use("/api", limiter);
 ===================================================== */
 
 // Parse JSON bodies
-app.use(express.json({ limit: "10mb" }));
+// The `verify` callback stashes the raw bytes on `req.rawBody` so that
+// webhook handlers (e.g. LiveKit) can verify HMAC/JWT signatures against
+// the exact bytes that were sent, rather than a re-serialised JSON string.
+app.use(express.json({
+  limit: "10mb",
+  verify: (req, _res, buf) => {
+    req.rawBody = buf;
+  },
+}));
 
 // Parse URL-encoded bodies
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));

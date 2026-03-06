@@ -7,6 +7,8 @@ import { EmailCacheProvider } from './context/EmailCacheContext';
 import { ContactsCacheProvider } from './context/ContactsCacheContext';
 import { SessionsCacheProvider } from './context/SessionsCacheContext';
 import { SocketProvider } from './context/SocketContext';
+import { AudioCallProvider } from './components/discuss/AudioCallProvider';
+import { CallOverlay } from './components/discuss/AudioCallUI';
 import { useRoutePrefetch } from './hooks/useRoutePrefetch';
 import { lazy, Suspense, Component, memo } from 'react';
 
@@ -227,6 +229,7 @@ function App() {
               <ContactsCacheProvider>
                 <SessionsCacheProvider>
                   <SocketProvider>
+                  <AudioCallProvider>
                   <BrowserRouter>
                     <RoutePrefetchWrapper>
                       <Routes>
@@ -390,6 +393,8 @@ function App() {
                       </Routes>
                     </RoutePrefetchWrapper>
                   </BrowserRouter>
+                  <CallOverlay />
+                  </AudioCallProvider>
                   </SocketProvider>
                 </SessionsCacheProvider>
               </ContactsCacheProvider>

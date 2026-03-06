@@ -137,3 +137,13 @@ export const getCallToken = async (channelId) => {
   const { data } = await api.post(`/discuss/channels/${channelId}/call/token`);
   return data;
 };
+
+/**
+ * Get persistent call logs for a channel
+ * @param {number} channelId
+ * @returns {Promise<Array>}
+ */
+export const getCallLogs = async (channelId) => {
+  const { data } = await api.get(`/discuss/channels/${channelId}/call/logs`);
+  return data;
+};

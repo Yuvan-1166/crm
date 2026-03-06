@@ -420,3 +420,180 @@ export const searchMessagesLike = async (companyId, empId, query, limit = 30) =>
   );
   return rows;
 };
+
+/* =====================================================
+   DISCUSS CALL LOG QUERIES
+===================================================== */
+
+/**
+ * Create a call log entry when a call starts
+ */
+export const createCallLog = async (channelId, callerEmpId, callerName, channelName, companyId) => {
+  const [result] = await db.execute(
+    `INSERT INTO discuss_call_logs (channel_id, caller_emp_id, caller_name, channel_name, status, company_id)
+     VALUES (?, ?, ?, ?, 'started', ?)`,
+    [channelId, callerEmpId, callerName, channelName, companyId]
+  );
+  return result.insertId;
+};
+
+/**
+ * End a call — update the most recent 'started' log for this channel
+ */
+export const endCallLog = async (channelId) => {
+  const [rows] = await db.execute(
+    `SELECT call_id, started_at FROM discuss_call_logs
+     WHERE channel_id = ? AND status = 'started'
+     ORDER BY call_id DESC LIMIT 1`,
+    [channelId]
+  );
+  if (rows.length === 0) return null;
+
+  const callId = rows[0].call_id;
+  const startedAt = new Date(rows[0].started_at);
+  const now = new Date();
+  const duration = Math.round((now - startedAt) / 1000);
+
+  await db.execute(
+    `UPDATE discuss_call_logs SET status = 'completed', ended_at = NOW(), duration = ?
+     WHERE call_id = ?`,
+    [duration, callId]
+  );
+  return { callId, duration };
+};
+
+/**
+ * Mark a call as missed (nobody picked up before timeout)
+ */
+export const missCallLog = async (channelId) => {
+  const [rows] = await db.execute(
+    `SELECT call_id FROM discuss_call_logs
+     WHERE channel_id = ? AND status = 'started'
+     ORDER BY call_id DESC LIMIT 1`,
+    [channelId]
+  );
+  if (rows.length === 0) return null;
+
+  await db.execute(
+    `UPDATE discuss_call_logs SET status = 'missed', ended_at = NOW()
+     WHERE call_id = ?`,
+    [rows[0].call_id]
+  );
+  return rows[0].call_id;
+};
+
+/**
+ * Get call logs for a channel (for display in chat)
+ */
+export const getCallLogsByChannel = async (channelId, limit = 50) => {
+  const safeLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 100);
+  const [rows] = await db.execute(
+    `SELECT call_id, channel_id, caller_emp_id, caller_name, channel_name,
+            status, started_at, ended_at, duration
+     FROM discuss_call_logs
+     WHERE channel_id = ?
+     ORDER BY started_at DESC
+     LIMIT ${safeLimit}`,
+    [channelId]
+  );
+  return rows;
+};
+
+/* =====================================================
+   DISCUSS CALL PARTICIPANT QUERIES (LiveKit webhook-driven)
+===================================================== */
+
+/**
+ * Find the most recent active (started) call for a channel by room name.
+ * Room names follow the pattern: call-{companyId}-{channelId}
+ */
+export const getActiveCallByRoomName = async (roomName) => {
+  // Parse companyId and channelId from room name: call-{companyId}-{channelId}
+  const parts = roomName.split("-");
+  if (parts.length < 3) return null;
+  const companyId = parseInt(parts[1]);
+  const channelId = parseInt(parts[parts.length - 1]);
+  if (isNaN(channelId) || isNaN(companyId)) return null;
+
+  const [rows] = await db.execute(
+    `SELECT call_id, channel_id, caller_emp_id, started_at, company_id
+     FROM discuss_call_logs
+     WHERE channel_id = ? AND company_id = ? AND status = 'started'
+     ORDER BY call_id DESC LIMIT 1`,
+    [channelId, companyId]
+  );
+  return rows.length > 0 ? rows[0] : null;
+};
+
+/**
+ * Mark a call as ongoing (room_started event from LiveKit)
+ */
+/**
+ * Mark a call as ongoing (room_started event from LiveKit).
+ * The row already has started_at = CURRENT_TIMESTAMP from the INSERT,
+ * so we just refresh it to the actual LiveKit room-start time.
+ */
+export const markCallOngoing = async (callId) => {
+  await db.execute(
+    `UPDATE discuss_call_logs SET started_at = NOW() WHERE call_id = ? AND status = 'started'`,
+    [callId]
+  );
+};
+
+/**
+ * End a call by call_id (room_finished event from LiveKit)
+ */
+export const endCallByRoomEvent = async (callId, startedAt) => {
+  const now = new Date();
+  const start = new Date(startedAt);
+  // Guard against clock skew producing a negative duration
+  const duration = Math.max(0, Math.round((now - start) / 1000));
+
+  // Use status = 'started' in WHERE to make this idempotent —
+  // if the socket "call:end" already completed it, this is a no-op.
+  const [result] = await db.execute(
+    `UPDATE discuss_call_logs SET status = 'completed', ended_at = NOW(), duration = ?
+     WHERE call_id = ? AND status = 'started'`,
+    [duration, callId]
+  );
+  return { callId, duration, updated: result.affectedRows > 0 };
+};
+
+/**
+ * Record a participant joining a call
+ */
+export const addCallParticipant = async (callId, empId, identity) => {
+  const [result] = await db.execute(
+    `INSERT INTO discuss_call_participants (call_id, emp_id, identity, status, joined_at)
+     VALUES (?, ?, ?, 'joined', NOW())`,
+    [callId, empId, identity]
+  );
+  return result.insertId;
+};
+
+/**
+ * Record a participant leaving a call
+ */
+export const markParticipantLeft = async (callId, empId) => {
+  await db.execute(
+    `UPDATE discuss_call_participants SET status = 'left', left_at = NOW()
+     WHERE call_id = ? AND emp_id = ? AND status = 'joined'
+     ORDER BY id DESC LIMIT 1`,
+    [callId, empId]
+  );
+};
+
+/**
+ * Get participants for a specific call
+ */
+export const getCallParticipants = async (callId) => {
+  const [rows] = await db.execute(
+    `SELECT dcp.*, e.name as employee_name
+     FROM discuss_call_participants dcp
+     JOIN employees e ON dcp.emp_id = e.emp_id
+     WHERE dcp.call_id = ?
+     ORDER BY dcp.joined_at ASC`,
+    [callId]
+  );
+  return rows;
+};

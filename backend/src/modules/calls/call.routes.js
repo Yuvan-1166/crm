@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import * as callController from './call.controller.js';
+import * as livekitWebhook from './livekit.webhook.controller.js';
 import { authenticateEmployee } from '../../middlewares/auth.middleware.js';
 import { requireAdmin } from '../../middlewares/role.middleware.js';
 
 const router = Router();
 
 /* =====================================================
-   PUBLIC ROUTES (Twilio Webhooks)
+   PUBLIC ROUTES (Webhooks — no auth middleware)
 ===================================================== */
 
 // Twilio status webhook
@@ -14,6 +15,9 @@ router.post('/webhook/status', callController.handleCallStatusWebhook);
 
 // Twilio recording webhook
 router.post('/webhook/recording', callController.handleRecordingWebhook);
+
+// LiveKit audio call webhook (signature verified inside handler)
+router.post('/webhook/livekit', livekitWebhook.handleLiveKitWebhook);
 
 // TwiML endpoints
 router.post('/twiml/connect', callController.getTwiMLConnect);

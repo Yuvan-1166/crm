@@ -674,7 +674,7 @@ const MessageBubble = memo(({ message, isOwn, onEdit, onDelete, onReply }) => {
                     if (src) src.onerror = showFallback;
                   }}
                 >
-                  <source src={url} />
+                  <source src={url} type={mime || undefined} />
                   Your browser does not support the audio element.
                 </audio>
               </div>
@@ -1444,14 +1444,52 @@ const DiscussView = () => {
 
     try {
       setLoading(true);
-      const [channelData, messagesData, membersData] = await Promise.all([
+      const [channelData, messagesData, membersData, callLogsData] = await Promise.all([
         discussService.getChannel(channelId),
         discussService.getMessages(channelId),
         discussService.getChannelMembers(channelId),
+        discussService.getCallLogs(channelId).catch(() => []),
       ]);
 
       setActiveChannel(channelData);
-      setMessages(messagesData);
+
+      // Merge DB call logs into messages as virtual call events
+      const callMessages = (callLogsData || []).map(log => ({
+        isCallEvent: true,
+        callEventId: `db-call-${log.call_id}`,
+        callType: log.status === 'started' ? 'start' : 'end',
+        callerName: log.caller_name || 'Someone',
+        callerEmpId: log.caller_emp_id,
+        channelId: log.channel_id,
+        duration: log.duration || 0,
+        callStatus: log.status,
+        created_at: log.started_at,
+        // For completed calls, also add an "end" event
+        _endedAt: log.ended_at,
+      }));
+
+      // Expand completed/missed calls into start + end event pairs
+      const expandedCallMessages = [];
+      for (const cm of callMessages) {
+        // Always add the start event
+        expandedCallMessages.push({ ...cm, callType: 'start' });
+        // Add an end event if the call has been completed or missed
+        if (cm.callStatus === 'completed' || cm.callStatus === 'missed') {
+          expandedCallMessages.push({
+            ...cm,
+            callEventId: `db-call-end-${cm.callEventId}`,
+            callType: 'end',
+            created_at: cm._endedAt || cm.created_at,
+          });
+        }
+      }
+
+      // Merge messages and call events, sort by created_at
+      const merged = [...messagesData, ...expandedCallMessages].sort(
+        (a, b) => new Date(a.created_at) - new Date(b.created_at)
+      );
+
+      setMessages(merged);
       setMembers(membersData);
       setHasMore(messagesData.length >= 50);
 

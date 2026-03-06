@@ -3,6 +3,54 @@ import { Room, RoomEvent } from 'livekit-client';
 import * as discussService from '../../services/discussService';
 import { useSocket, useSocketEvent } from '../../context/SocketContext';
 
+// ---- Ringtone generator using Web Audio API ----
+const createRingtone = () => {
+  let ctx = null;
+  let intervalId = null;
+
+  const playTone = () => {
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 440;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+
+    // Second tone after a short delay for a "ring-ring" pattern  
+    setTimeout(() => {
+      if (!ctx) return;
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.frequency.value = 523;
+      gain2.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc2.start(ctx.currentTime);
+      osc2.stop(ctx.currentTime + 0.3);
+    }, 200);
+  };
+
+  return {
+    start() {
+      try {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        playTone();
+        intervalId = setInterval(playTone, 2500);
+      } catch { /* silently fail if Web Audio unavailable */ }
+    },
+    stop() {
+      if (intervalId) clearInterval(intervalId);
+      intervalId = null;
+      if (ctx) { ctx.close().catch(() => {}); ctx = null; }
+    },
+  };
+};
+
 /**
  * AudioCallContext — WhatsApp-style audio calling for Discuss channels.
  *
@@ -40,6 +88,7 @@ export const AudioCallProvider = ({ children }) => {
   const durationTimerRef = useRef(null);
   const ringingTimerRef = useRef(null);
   const disconnectingRef = useRef(false); // guard against recursive disconnect
+  const ringtoneRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -50,6 +99,7 @@ export const AudioCallProvider = ({ children }) => {
       }
       if (durationTimerRef.current) clearInterval(durationTimerRef.current);
       if (ringingTimerRef.current) clearTimeout(ringingTimerRef.current);
+      if (ringtoneRef.current) { ringtoneRef.current.stop(); ringtoneRef.current = null; }
     };
   }, []);
 
@@ -113,6 +163,15 @@ export const AudioCallProvider = ({ children }) => {
             document.body.appendChild(container);
           }
           container.appendChild(audio);
+          // Explicitly play to handle browsers that block autoplay
+          audio.play().catch(() => {
+            // If autoplay blocked, retry on next user interaction
+            const resumePlay = () => {
+              audio.play().catch(() => {});
+              document.removeEventListener('click', resumePlay);
+            };
+            document.addEventListener('click', resumePlay, { once: true });
+          });
           track.on('ended', () => audio.remove());
         }
       });
@@ -132,10 +191,14 @@ export const AudioCallProvider = ({ children }) => {
       });
 
       await room.connect(wsUrl, token);
+      // Resume audio context — required by browsers with strict autoplay policies
+      await room.startAudio().catch(() => {});
       await room.localParticipant.setMicrophoneEnabled(true);
 
       roomRef.current = room;
       disconnectingRef.current = false;
+      // Stop ringing once connected
+      if (ringtoneRef.current) { ringtoneRef.current.stop(); ringtoneRef.current = null; }
       setCallState('active');
       setCallDuration(0);
       syncParticipants();
@@ -167,6 +230,8 @@ export const AudioCallProvider = ({ children }) => {
     // Remove all attached LiveKit audio elements
     const audioContainer = document.getElementById('livekit-audio-container');
     if (audioContainer) audioContainer.innerHTML = '';
+    // Stop any ringing sound
+    if (ringtoneRef.current) { ringtoneRef.current.stop(); ringtoneRef.current = null; }
     roomRef.current = null;
     setCallState('idle');
     setCallChannelId(null);
@@ -188,6 +253,10 @@ export const AudioCallProvider = ({ children }) => {
     setCallChannelId(channelId);
     setCallChannelName(channelName || `Channel ${channelId}`);
 
+    // Play ringing tone
+    ringtoneRef.current = createRingtone();
+    ringtoneRef.current.start();
+
     // Signal other channel members
     emit('call:start', { channelId, callerName, channelName });
 
@@ -208,9 +277,10 @@ export const AudioCallProvider = ({ children }) => {
       return false;
     }
 
-    // Auto-end after 60s if nobody joins
+    // Auto-end after 60s if nobody joins — mark as missed in DB
     ringingTimerRef.current = setTimeout(() => {
       if (roomRef.current && roomRef.current.remoteParticipants.size === 0) {
+        emit('call:missed', { channelId });
         leaveCall();
       }
     }, 60000);
@@ -223,6 +293,9 @@ export const AudioCallProvider = ({ children }) => {
    */
   const acceptCall = useCallback(async () => {
     if (!incomingCall) return false;
+
+    // Stop ringing
+    if (ringtoneRef.current) { ringtoneRef.current.stop(); ringtoneRef.current = null; }
 
     const { channelId, channelName } = incomingCall;
     setCallChannelId(channelId);
@@ -258,6 +331,8 @@ export const AudioCallProvider = ({ children }) => {
    * Reject an incoming call
    */
   const rejectCall = useCallback(() => {
+    // Stop ringing
+    if (ringtoneRef.current) { ringtoneRef.current.stop(); ringtoneRef.current = null; }
     if (incomingCall) {
       emit('call:reject', { channelId: incomingCall.channelId });
     }
@@ -332,7 +407,13 @@ export const AudioCallProvider = ({ children }) => {
       callerEmpId: data.callerEmpId,
     });
 
+    // Play ringtone for incoming call
+    ringtoneRef.current = createRingtone();
+    ringtoneRef.current.start();
+
     ringingTimerRef.current = setTimeout(() => {
+      // Stop ringing on timeout
+      if (ringtoneRef.current) { ringtoneRef.current.stop(); ringtoneRef.current = null; }
       setIncomingCall((prev) => {
         if (prev?.channelId === data.channelId) {
           setCallState('idle');
