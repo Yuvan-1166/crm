@@ -545,7 +545,7 @@ const AVATAR_COLORS = {
   default: 'bg-gradient-to-br from-sky-400 to-indigo-500',
 };
 
-const MessageBubble = memo(({ message, isOwn, onEdit, onDelete, onReply }) => {
+const MessageBubble = memo(({ message, isOwn, onEdit, onDelete, onReply, hideReplyBtn = false }) => {
   const [showActions, setShowActions] = useState(false);
 
   const time = new Date(message.created_at).toLocaleTimeString('en-IN', {
@@ -709,14 +709,28 @@ const MessageBubble = memo(({ message, isOwn, onEdit, onDelete, onReply }) => {
             );
           })()}
         </div>
+        {/* Thread reply count — persistent inline badge */}
+        {!isDeleted && !!message.reply_count && (
+          <button
+            onClick={() => onReply(message)}
+            className={`mt-1 flex items-center gap-1 text-xs font-medium transition-colors ${
+              isOwn ? 'text-indigo-300 hover:text-white' : 'text-sky-600 hover:text-sky-800'
+            }`}
+          >
+            <MessageSquare className="w-3 h-3" />
+            {message.reply_count} {message.reply_count === 1 ? 'reply' : 'replies'}
+          </button>
+        )}
       </div>
 
       {/* Hover Actions */}
       {showActions && !message.is_deleted && (
         <div className={`flex items-center gap-0.5 self-center ${isOwn ? 'flex-row-reverse' : ''}`}>
-          <button onClick={() => onReply(message)} className="p-1 hover:bg-gray-200 rounded" title="Reply in thread">
-            <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
-          </button>
+          {!hideReplyBtn && (
+            <button onClick={() => onReply(message)} className="p-1 hover:bg-gray-200 rounded" title="Reply in thread">
+              <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
+            </button>
+          )}
           {isOwn && (
             <>
               <button onClick={() => onEdit(message)} className="p-1 hover:bg-gray-200 rounded" title="Edit">
@@ -817,7 +831,7 @@ AttachmentPreview.displayName = 'AttachmentPreview';
    MESSAGE COMPOSER (text + file picker + audio)
 ===================================================== */
 
-const MessageComposer = memo(({ channelId, members, deals, editingMessage, onCancelEdit }) => {
+const MessageComposer = memo(({ channelId, members, deals, editingMessage, onCancelEdit, parentMessageId = null, placeholder: placeholderProp }) => {
   const [text, setText] = useState('');
   const [mentionQuery, setMentionQuery] = useState(null);
   const [attachment, setAttachment] = useState(null);   // { file, previewUrl, type, name, size }
@@ -980,6 +994,7 @@ const MessageComposer = memo(({ channelId, members, deals, editingMessage, onCan
     emit('message:send', {
       channelId,
       content: content || undefined,
+      parentMessageId: parentMessageId || undefined,
       ...(attachData && {
         attachmentUrl: attachData.url,
         attachmentType: attachData.type,
@@ -1075,7 +1090,7 @@ const MessageComposer = memo(({ channelId, members, deals, editingMessage, onCan
           value={text}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder={recording ? 'Recording…' : 'Type a message… @ mention, # deal'}
+          placeholder={recording ? 'Recording…' : (placeholderProp || 'Type a message… @ mention, # deal')}
           disabled={recording}
           rows={1}
           className="flex-1 resize-none border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none max-h-32 overflow-y-auto disabled:bg-gray-50"
@@ -1365,6 +1380,110 @@ const InviteBanner = memo(({ invite, onDismiss, onJoin }) => (
 InviteBanner.displayName = 'InviteBanner';
 
 /* =====================================================
+   THREAD PANEL  (Slack-style slide-over)
+===================================================== */
+
+const ThreadPanel = memo(({
+  parentMessage,
+  replies,
+  loading,
+  currentEmpId,
+  channelId,
+  members,
+  deals,
+  onClose,
+  onDeleteReply,
+}) => {
+  const [editingReply, setEditingReply] = useState(null);
+  const bottomRef = useRef(null);
+
+  // Auto-scroll to newest reply
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [replies.length]);
+
+  return (
+    <div className="w-96 flex-shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="h-14 border-b border-gray-200 flex items-center justify-between px-4 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="w-4 h-4 text-indigo-500" />
+          <span className="font-semibold text-gray-900">Thread</span>
+          {replies.length > 0 && (
+            <span className="text-xs text-gray-400">
+              {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+          title="Close thread"
+        >
+          <X className="w-4 h-4 text-gray-500" />
+        </button>
+      </div>
+
+      {/* Parent message — read-only preview */}
+      <div className="flex-shrink-0 border-b border-gray-100 bg-gray-50/60">
+        <p className="px-4 pt-2 pb-0 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Original Message</p>
+        <MessageBubble
+          message={parentMessage}
+          isOwn={parentMessage.sender_emp_id === currentEmpId}
+          onEdit={() => {}}
+          onDelete={() => {}}
+          onReply={() => {}}
+          hideReplyBtn
+        />
+      </div>
+
+      {/* Divider with reply count */}
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2">
+        <div className="flex-1 h-px bg-gray-100" />
+        <span className="text-[11px] font-medium text-gray-400 whitespace-nowrap">
+          {replies.length === 0 ? 'No replies yet' : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
+        </span>
+        <div className="flex-1 h-px bg-gray-100" />
+      </div>
+
+      {/* Reply list */}
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-500" />
+          </div>
+        ) : (
+          replies.map((reply) => (
+            <MessageBubble
+              key={reply.message_id}
+              message={reply}
+              isOwn={reply.sender_emp_id === currentEmpId}
+              onEdit={(msg) => setEditingReply(msg)}
+              onDelete={onDeleteReply}
+              onReply={() => {}}
+              hideReplyBtn
+            />
+          ))
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Thread composer */}
+      <MessageComposer
+        channelId={channelId}
+        members={members}
+        deals={deals}
+        parentMessageId={parentMessage.message_id}
+        editingMessage={editingReply}
+        onCancelEdit={() => setEditingReply(null)}
+        placeholder="Reply in thread…"
+      />
+    </div>
+  );
+});
+ThreadPanel.displayName = 'ThreadPanel';
+
+/* =====================================================
    MAIN DISCUSS COMPONENT
 ===================================================== */
 
@@ -1394,6 +1513,24 @@ const DiscussView = () => {
   const [editingMessage, setEditingMessage] = useState(null);
   const [typingUsers, setTypingUsers] = useState([]);
   const [pendingInvite, setPendingInvite] = useState(null); // for toast notification
+
+  // Thread panel — tracks which parent message’s thread is open
+  const [openThread, setOpenThread]       = useState(null);
+  const [threadReplies, setThreadReplies] = useState([]);
+  const [threadLoading, setThreadLoading] = useState(false);
+  // Stable ref for socket callbacks to avoid stale-closure bugs
+  const openThreadRef = useRef(null);
+  useEffect(() => { openThreadRef.current = openThread; }, [openThread]);
+
+  // Fetch thread replies whenever the active parent message changes
+  useEffect(() => {
+    if (!openThread) { setThreadReplies([]); return; }
+    setThreadLoading(true);
+    discussService.getThread(openThread.message_id)
+      .then(setThreadReplies)
+      .catch(console.error)
+      .finally(() => setThreadLoading(false));
+  }, [openThread?.message_id]);
 
   /**
    * Start an audio call on the current channel (WhatsApp-style)
@@ -1441,6 +1578,8 @@ const DiscussView = () => {
     setMessages([]);
     setHasMore(true);
     setEditingMessage(null);
+    setOpenThread(null);
+    setThreadReplies([]);
 
     try {
       setLoading(true);
@@ -1531,6 +1670,25 @@ const DiscussView = () => {
   --------------------------------------------------- */
 
   const handleNewMessage = useCallback((msg) => {
+    // Thread reply — route to thread panel and increment parent badge
+    if (msg.parent_message_id) {
+      if (msg.parent_message_id === openThreadRef.current?.message_id) {
+        setThreadReplies(prev => {
+          if (prev.some(r => r.message_id === msg.message_id)) return prev;
+          return [...prev, msg];
+        });
+      }
+      // Bump reply-count badge on the parent message in the main feed
+      setMessages(prev =>
+        prev.map(m =>
+          m.message_id === msg.parent_message_id
+            ? { ...m, reply_count: (m.reply_count || 0) + 1 }
+            : m
+        )
+      );
+      return; // Don’t push thread replies into the main channel feed
+    }
+
     if (msg.channel_id === activeChannelId) {
       setMessages(prev => {
         if (prev.some(m => m.message_id === msg.message_id)) return prev;
@@ -1549,10 +1707,12 @@ const DiscussView = () => {
 
   const handleEditedMessage = useCallback((msg) => {
     setMessages(prev => prev.map(m => m.message_id === msg.message_id ? { ...m, ...msg } : m));
+    setThreadReplies(prev => prev.map(r => r.message_id === msg.message_id ? { ...r, ...msg } : r));
   }, []);
 
   const handleDeletedMessage = useCallback(({ messageId }) => {
     setMessages(prev => prev.map(m => m.message_id === messageId ? { ...m, is_deleted: true } : m));
+    setThreadReplies(prev => prev.map(r => r.message_id === messageId ? { ...r, is_deleted: true } : r));
   }, []);
 
   const handleTypingStart = useCallback(({ empId }) => {
@@ -1630,9 +1790,10 @@ const DiscussView = () => {
     emit('message:delete', { messageId: msg.message_id });
   };
 
-  const handleReply = (msg) => {
-    // Thread support placeholder
-  };
+  const handleReply = useCallback((msg) => {
+    // Toggle: clicking the same parent message again closes the panel
+    setOpenThread(prev => prev?.message_id === msg.message_id ? null : msg);
+  }, []);
 
   const handleChannelCreated = () => {
     loadChannels();
@@ -1678,57 +1839,75 @@ const DiscussView = () => {
         onBrowseClick={() => setShowBrowse(true)}
       />
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {activeChannel ? (
-          <>
-            <ChannelHeader
-              channel={activeChannel}
-              memberCount={members.length}
-              onMembersClick={() => setShowMembers(prev => !prev)}
-              onSearchClick={() => setShowBrowse(true)}
-              onCallClick={handleStartCall}
-              isInCall={audioCall?.callState === 'active' && audioCall?.callChannelId === activeChannelId}
-            />
+      {/* Centre: chat column + thread panel side-by-side */}
+      <div className="flex-1 flex min-w-0 overflow-hidden">
+        {/* Chat column */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {activeChannel ? (
+            <>
+              <ChannelHeader
+                channel={activeChannel}
+                memberCount={members.length}
+                onMembersClick={() => setShowMembers(prev => !prev)}
+                onSearchClick={() => setShowBrowse(true)}
+                onCallClick={handleStartCall}
+                isInCall={audioCall?.callState === 'active' && audioCall?.callChannelId === activeChannelId}
+              />
 
-            {/* Active Call Bar — shown inline when there's an ongoing call in this channel */}
-            <ActiveCallBar channelId={activeChannelId} channelName={activeChannel?.name} />
+              {/* Active Call Bar — shown inline when there's an ongoing call in this channel */}
+              <ActiveCallBar channelId={activeChannelId} channelName={activeChannel?.name} />
 
-            <MessageList
-              messages={messages}
-              currentEmpId={user?.emp_id}
-              channelId={activeChannelId}
-              channelName={activeChannel?.name}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onReply={handleReply}
-              onLoadMore={loadMore}
-              hasMore={hasMore}
-              loading={loading}
-            />
+              <MessageList
+                messages={messages}
+                currentEmpId={user?.emp_id}
+                channelId={activeChannelId}
+                channelName={activeChannel?.name}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onReply={handleReply}
+                onLoadMore={loadMore}
+                hasMore={hasMore}
+                loading={loading}
+              />
 
-            {typingNames.length > 0 && (
-              <div className="px-4 py-1 text-xs text-gray-400 italic">
-                {typingNames.join(', ')} {typingNames.length === 1 ? 'is' : 'are'} typing...
+              {typingNames.length > 0 && (
+                <div className="px-4 py-1 text-xs text-gray-400 italic">
+                  {typingNames.join(', ')} {typingNames.length === 1 ? 'is' : 'are'} typing...
+                </div>
+              )}
+
+              <MessageComposer
+                channelId={activeChannelId}
+                members={members}
+                deals={deals}
+                editingMessage={editingMessage}
+                onCancelEdit={handleCancelEdit}
+              />
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-gray-400">
+              <div className="text-center">
+                <Hash className="w-16 h-16 mx-auto mb-3 opacity-20" />
+                <p className="font-medium">Select a channel to start chatting</p>
+                <p className="text-sm mt-1">or create a new one</p>
               </div>
-            )}
-
-            <MessageComposer
-              channelId={activeChannelId}
-              members={members}
-              deals={deals}
-              editingMessage={editingMessage}
-              onCancelEdit={handleCancelEdit}
-            />
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-400">
-            <div className="text-center">
-              <Hash className="w-16 h-16 mx-auto mb-3 opacity-20" />
-              <p className="font-medium">Select a channel to start chatting</p>
-              <p className="text-sm mt-1">or create a new one</p>
             </div>
-          </div>
+          )}
+        </div>
+
+        {/* Thread Panel — slide-over within the centre area */}
+        {openThread && (
+          <ThreadPanel
+            parentMessage={openThread}
+            replies={threadReplies}
+            loading={threadLoading}
+            currentEmpId={user?.emp_id}
+            channelId={activeChannelId}
+            members={members}
+            deals={deals}
+            onClose={() => setOpenThread(null)}
+            onDeleteReply={handleDelete}
+          />
         )}
       </div>
 

@@ -255,10 +255,12 @@ export const getMessages = async (channelId, limit = 50, before = null) => {
     SELECT m.message_id, m.channel_id, m.sender_emp_id, m.content,
            m.parent_message_id, m.is_edited, m.is_deleted, m.created_at, m.updated_at,
            m.attachment_url, m.attachment_type, m.attachment_name, m.attachment_size,
-           e.name AS sender_name, e.email AS sender_email, e.role AS sender_role
+           e.name AS sender_name, e.email AS sender_email, e.role AS sender_role,
+           (SELECT COUNT(*) FROM discuss_messages r
+             WHERE r.parent_message_id = m.message_id AND r.is_deleted = FALSE) AS reply_count
     FROM discuss_messages m
     JOIN employees e ON e.emp_id = m.sender_emp_id
-    WHERE m.channel_id = ? AND m.is_deleted = FALSE`;
+    WHERE m.channel_id = ? AND m.parent_message_id IS NULL AND m.is_deleted = FALSE`;
   const params = [channelId];
 
   if (before) {
@@ -312,7 +314,7 @@ export const softDeleteMessage = async (messageId) => {
 export const getThreadReplies = async (parentMessageId, limit = 50) => {
   const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 100));
   const [rows] = await db.execute(
-    `SELECT m.*, e.name AS sender_name, e.email AS sender_email
+    `SELECT m.*, e.name AS sender_name, e.email AS sender_email, e.role AS sender_role
      FROM discuss_messages m
      JOIN employees e ON e.emp_id = m.sender_emp_id
      WHERE m.parent_message_id = ? AND m.is_deleted = FALSE
