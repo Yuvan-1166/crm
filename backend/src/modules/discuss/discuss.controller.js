@@ -249,8 +249,13 @@ export const getMyMentions = async (req, res, next) => {
 
 export const searchMessages = async (req, res, next) => {
   try {
-    const { q } = req.query;
-    const results = await discussService.searchMessages(req.user.companyId, req.user.empId, q);
+    const { q, channelId } = req.query;
+    const results = await discussService.searchMessages(
+      req.user.companyId,
+      req.user.empId,
+      q,
+      channelId ? parseInt(channelId) : null
+    );
     res.json(results);
   } catch (error) { next(error); }
 };

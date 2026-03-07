@@ -545,8 +545,17 @@ const AVATAR_COLORS = {
   default: 'bg-gradient-to-br from-sky-400 to-indigo-500',
 };
 
-const MessageBubble = memo(({ message, isOwn, onEdit, onDelete, onReply, hideReplyBtn = false }) => {
+const MessageBubble = memo(({ message, isOwn, onEdit, onDelete, onReply, hideReplyBtn = false, highlighted = false }) => {
   const [showActions, setShowActions] = useState(false);
+  const [isFlashing, setIsFlashing] = useState(false);
+
+  // Trigger flash when highlighted prop flips to true
+  useEffect(() => {
+    if (!highlighted) return;
+    setIsFlashing(true);
+    const t = setTimeout(() => setIsFlashing(false), 2500);
+    return () => clearTimeout(t);
+  }, [highlighted]);
 
   const time = new Date(message.created_at).toLocaleTimeString('en-IN', {
     timeZone: 'Asia/Kolkata',
@@ -561,9 +570,12 @@ const MessageBubble = memo(({ message, isOwn, onEdit, onDelete, onReply, hideRep
 
   return (
     <div
-      className={`group flex gap-3 px-4 py-1.5 hover:bg-gray-50 transition-colors ${
-        isOwn ? 'flex-row-reverse' : ''
-      }`}
+      data-message-id={message.message_id}
+      className={`group flex gap-3 px-4 py-1.5 transition-colors duration-700 ${
+        isFlashing
+          ? 'bg-amber-50 ring-2 ring-inset ring-amber-300'
+          : 'hover:bg-gray-50'
+      } ${isOwn ? 'flex-row-reverse' : ''}`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
@@ -1126,7 +1138,7 @@ MessageComposer.displayName = 'MessageComposer';
    MESSAGE LIST (with infinite scroll)
 ===================================================== */
 
-const MessageList = memo(({ messages, currentEmpId, channelId, channelName, onEdit, onDelete, onReply, onLoadMore, hasMore, loading }) => {
+const MessageList = memo(({ messages, currentEmpId, channelId, channelName, onEdit, onDelete, onReply, onLoadMore, hasMore, loading, highlightedMessageId = null }) => {
   const bottomRef = useRef(null);
   const containerRef = useRef(null);
   const prevScrollHeightRef = useRef(0);
@@ -1137,6 +1149,13 @@ const MessageList = memo(({ messages, currentEmpId, channelId, channelName, onEd
       bottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages.length, autoScroll]);
+
+  // Scroll highlighted message into view whenever it changes
+  useEffect(() => {
+    if (!highlightedMessageId || !containerRef.current) return;
+    const el = containerRef.current.querySelector(`[data-message-id="${highlightedMessageId}"]`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlightedMessageId, messages]);
 
   const handleScroll = () => {
     const el = containerRef.current;
@@ -1221,6 +1240,7 @@ const MessageList = memo(({ messages, currentEmpId, channelId, channelName, onEd
             onEdit={onEdit}
             onDelete={onDelete}
             onReply={onReply}
+            highlighted={msg.message_id === highlightedMessageId}
           />
         );
       })}
@@ -1240,10 +1260,175 @@ const MessageList = memo(({ messages, currentEmpId, channelId, channelName, onEd
 MessageList.displayName = 'MessageList';
 
 /* =====================================================
+   MESSAGE SEARCH PANEL (slide-over)
+===================================================== */
+
+const MessageSearchPanel = memo(({ channelId, channelName, onClose, onJump }) => {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const inputRef = useRef(null);
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults([]);
+      setSearched(false);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      setSearched(false);
+      try {
+        const data = await discussService.searchMessages(q, channelId);
+        setResults(data);
+      } catch (err) {
+        console.error('Message search error:', err);
+        setResults([]);
+      } finally {
+        setSearching(false);
+        setSearched(true);
+      }
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [query, channelId]);
+
+  // Escape the query for safe RegExp usage
+  const escapedQ = useMemo(
+    () => query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+    [query]
+  );
+
+  // Wrap matched substrings in <mark>
+  const highlight = useCallback((text) => {
+    if (!text || !escapedQ) return text;
+    const regex = new RegExp(`(${escapedQ})`, 'gi');
+    return text.split(regex).map((part, i) =>
+      regex.test(part)
+        ? <mark key={i} className="bg-yellow-200 text-yellow-900 rounded-sm px-0.5">{part}</mark>
+        : part
+    );
+  }, [escapedQ]);
+
+  return (
+    <div className="w-80 flex-shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="h-14 border-b border-gray-200 flex items-center justify-between px-4 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Search className="w-4 h-4 text-sky-500" />
+          <span className="font-semibold text-gray-900 text-sm">Search Messages</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+          title="Close search"
+        >
+          <X className="w-4 h-4 text-gray-500" />
+        </button>
+      </div>
+
+      {/* Input */}
+      <div className="p-3 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 focus-within:border-sky-400 focus-within:ring-1 focus-within:ring-sky-200 transition-all">
+          <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder={`Search in #${channelName}\u2026`}
+            maxLength={100}
+            className="flex-1 bg-transparent text-sm outline-none text-gray-700 placeholder-gray-400"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+              title="Clear"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <p className="text-[10px] text-gray-400 mt-1.5 px-0.5">
+          {query.length > 0 && query.length < 2 ? 'Type at least 2 characters\u2026' : 'Results in this channel only'}
+        </p>
+      </div>
+
+      {/* Results */}
+      <div className="flex-1 overflow-y-auto">
+        {searching && (
+          <div className="flex justify-center py-10">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-sky-500" />
+          </div>
+        )}
+
+        {!searching && searched && results.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+            <Search className="w-10 h-10 text-gray-200 mb-3" />
+            <p className="text-sm font-medium text-gray-500">No messages found</p>
+            <p className="text-xs text-gray-400 mt-1">Try different keywords</p>
+          </div>
+        )}
+
+        {!searching && !searched && (
+          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+            <Search className="w-10 h-10 text-gray-200 mb-3" />
+            <p className="text-sm text-gray-400">Search messages in this channel</p>
+          </div>
+        )}
+
+        {!searching && results.length > 0 && (
+          <div>
+            <p className="px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+              {results.length} result{results.length !== 1 ? 's' : ''}
+            </p>
+            <div className="divide-y divide-gray-50">
+              {results.map(result => (
+                <div
+                  key={result.message_id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => { onJump?.(result.message_id); onClose(); }}
+                  onKeyDown={e => e.key === 'Enter' && (onJump?.(result.message_id), onClose())}
+                  className="px-4 py-3 hover:bg-sky-50 active:bg-sky-100 transition-colors cursor-pointer"
+                  title="Click to jump to this message"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">
+                      {(result.sender_name || '?')[0].toUpperCase()}
+                    </div>
+                    <span className="text-xs font-semibold text-gray-800 truncate flex-1">{result.sender_name}</span>
+                    <span className="text-[10px] text-gray-400 flex-shrink-0">
+                      {new Date(result.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 line-clamp-3 pl-7 leading-relaxed">
+                    {highlight(result.content)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+MessageSearchPanel.displayName = 'MessageSearchPanel';
+
+/* =====================================================
    CHANNEL HEADER
 ===================================================== */
 
-const ChannelHeader = memo(({ channel, memberCount, onMembersClick, onSearchClick, onCallClick, isInCall }) => {
+const ChannelHeader = memo(({ channel, memberCount, onMembersClick, onSearchClick, isSearchOpen, onCallClick, isInCall }) => {
   if (!channel) return null;
   const Icon = channel.channel_type === 'PRIVATE' ? Lock : Hash;
 
@@ -1272,8 +1457,16 @@ const ChannelHeader = memo(({ channel, memberCount, onMembersClick, onSearchClic
         >
           <Phone className="w-4 h-4" />
         </button>
-        <button onClick={onSearchClick} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Search">
-          <Search className="w-4 h-4 text-gray-500" />
+        <button
+          onClick={onSearchClick}
+          className={`p-2 rounded-lg transition-colors ${
+            isSearchOpen
+              ? 'bg-sky-100 text-sky-600 hover:bg-sky-200'
+              : 'hover:bg-gray-100 text-gray-500'
+          }`}
+          title={isSearchOpen ? 'Close search' : 'Search messages'}
+        >
+          <Search className="w-4 h-4" />
         </button>
         <button onClick={onMembersClick} className="flex items-center gap-1 px-2 py-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Members">
           <Users className="w-4 h-4 text-gray-500" />
@@ -1510,6 +1703,9 @@ const DiscussView = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+  const [isJumpContext, setIsJumpContext] = useState(false);
   const [editingMessage, setEditingMessage] = useState(null);
   const [typingUsers, setTypingUsers] = useState([]);
   const [pendingInvite, setPendingInvite] = useState(null); // for toast notification
@@ -1521,6 +1717,13 @@ const DiscussView = () => {
   // Stable ref for socket callbacks to avoid stale-closure bugs
   const openThreadRef = useRef(null);
   useEffect(() => { openThreadRef.current = openThread; }, [openThread]);
+
+  // Auto-clear highlighted message after flash duration
+  useEffect(() => {
+    if (!highlightedMessageId) return;
+    const t = setTimeout(() => setHighlightedMessageId(null), 3000);
+    return () => clearTimeout(t);
+  }, [highlightedMessageId]);
 
   // Fetch thread replies whenever the active parent message changes
   useEffect(() => {
@@ -1580,6 +1783,9 @@ const DiscussView = () => {
     setEditingMessage(null);
     setOpenThread(null);
     setThreadReplies([]);
+    setShowSearch(false);
+    setHighlightedMessageId(null);
+    setIsJumpContext(false);
 
     try {
       setLoading(true);
@@ -1664,6 +1870,30 @@ const DiscussView = () => {
       setLoading(false);
     }
   }, [activeChannelId, messages, loading, hasMore]);
+
+  /**
+   * Jump to a specific message by ID.
+   * If the message is already in the current messages slice, just scroll + highlight.
+   * If not, load a fresh batch ending at that message (50 msgs), then scroll + highlight.
+   */
+  const jumpToMessage = useCallback(async (messageId) => {
+    const inView = messages.some(m => m.message_id === messageId);
+    setHighlightedMessageId(messageId);
+    if (!inView && activeChannelId) {
+      setLoading(true);
+      try {
+        // Load 50 messages ending at (and including) the target
+        const batch = await discussService.getMessages(activeChannelId, { limit: 50, before: messageId + 1 });
+        setMessages(batch);
+        setHasMore(batch.length >= 50);
+        setIsJumpContext(true);
+      } catch (err) {
+        console.error('jumpToMessage failed:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [messages, activeChannelId]);
 
   /* ---------------------------------------------------
      REAL-TIME EVENT HANDLERS
@@ -1793,6 +2023,7 @@ const DiscussView = () => {
   const handleReply = useCallback((msg) => {
     // Toggle: clicking the same parent message again closes the panel
     setOpenThread(prev => prev?.message_id === msg.message_id ? null : msg);
+    setShowSearch(false); // mutually exclusive with search panel
   }, []);
 
   const handleChannelCreated = () => {
@@ -1849,7 +2080,8 @@ const DiscussView = () => {
                 channel={activeChannel}
                 memberCount={members.length}
                 onMembersClick={() => setShowMembers(prev => !prev)}
-                onSearchClick={() => setShowBrowse(true)}
+                onSearchClick={() => { setShowSearch(prev => !prev); setOpenThread(null); }}
+                isSearchOpen={showSearch}
                 onCallClick={handleStartCall}
                 isInCall={audioCall?.callState === 'active' && audioCall?.callChannelId === activeChannelId}
               />
@@ -1868,7 +2100,21 @@ const DiscussView = () => {
                 onLoadMore={loadMore}
                 hasMore={hasMore}
                 loading={loading}
+                highlightedMessageId={highlightedMessageId}
               />
+
+              {/* Jump-context banner — shown when user jumped to a historical message */}
+              {isJumpContext && (
+                <div className="flex items-center justify-center gap-2 py-1.5 bg-amber-50 border-t border-amber-200">
+                  <span className="text-xs text-amber-700">Viewing older messages</span>
+                  <button
+                    onClick={() => { setIsJumpContext(false); selectChannel(activeChannelId); }}
+                    className="text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
+                  >
+                    Jump to latest ↓
+                  </button>
+                </div>
+              )}
 
               {typingNames.length > 0 && (
                 <div className="px-4 py-1 text-xs text-gray-400 italic">
@@ -1907,6 +2153,16 @@ const DiscussView = () => {
             deals={deals}
             onClose={() => setOpenThread(null)}
             onDeleteReply={handleDelete}
+          />
+        )}
+
+        {/* Message Search Panel — mutually exclusive with thread panel */}
+        {showSearch && activeChannel && (
+          <MessageSearchPanel
+            channelId={activeChannelId}
+            channelName={activeChannel.name}
+            onClose={() => setShowSearch(false)}
+            onJump={(id) => { jumpToMessage(id); setShowSearch(false); }}
           />
         )}
       </div>

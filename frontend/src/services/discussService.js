@@ -121,8 +121,10 @@ export const getMyMentions = async () => {
   return data;
 };
 
-export const searchMessages = async (query) => {
-  const { data } = await api.get('/discuss/search', { params: { q: query } });
+export const searchMessages = async (query, channelId = null) => {
+  const params = { q: query };
+  if (channelId) params.channelId = channelId;
+  const { data } = await api.get('/discuss/search', { params });
   return data;
 };
 

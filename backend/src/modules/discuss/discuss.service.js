@@ -243,8 +243,8 @@ export const getMyMentions = async (empId) => {
   return repo.getMentionsForEmployee(empId);
 };
 
-export const searchMessages = async (companyId, empId, query) => {
+export const searchMessages = async (companyId, empId, query, channelId = null) => {
   if (!query || query.trim().length < 2) throw new Error("Search query too short");
   const clean = sanitiseText(query).slice(0, 100);
-  return repo.searchMessagesLike(companyId, empId, clean);
+  return repo.searchMessagesLike(companyId, empId, clean, channelId);
 };

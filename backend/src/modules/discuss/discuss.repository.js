@@ -404,21 +404,31 @@ export const searchMessages = async (companyId, empId, query, limit = 30) => {
 
 /**
  * Fallback search using LIKE (if FULLTEXT index not present)
+ * @param {string|null} channelId - when provided, restricts results to that channel
  */
-export const searchMessagesLike = async (companyId, empId, query, limit = 30) => {
+export const searchMessagesLike = async (companyId, empId, query, channelId = null, limit = 30) => {
   const safeLimit = Math.max(1, Math.min(parseInt(limit) || 30, 100));
+  const params = [companyId, empId, `%${query}%`];
+  let channelClause = '';
+  if (channelId) {
+    channelClause = 'AND m.channel_id = ?';
+    params.push(channelId);
+  }
   const [rows] = await db.execute(
-    `SELECT m.message_id, m.channel_id, m.content, m.created_at,
+    `SELECT m.message_id, m.channel_id, m.sender_emp_id, m.content, m.created_at,
        c.name AS channel_name,
        e.name AS sender_name
      FROM discuss_messages m
      JOIN discuss_channels c ON c.channel_id = m.channel_id AND c.company_id = ?
      JOIN discuss_channel_members cm ON cm.channel_id = m.channel_id AND cm.emp_id = ?
      JOIN employees e ON e.emp_id = m.sender_emp_id
-     WHERE m.is_deleted = FALSE AND m.content LIKE ?
+     WHERE m.is_deleted = FALSE
+       AND m.parent_message_id IS NULL
+       AND m.content LIKE ?
+       ${channelClause}
      ORDER BY m.message_id DESC
      LIMIT ${safeLimit}`,
-    [companyId, empId, `%${query}%`]
+    params
   );
   return rows;
 };
