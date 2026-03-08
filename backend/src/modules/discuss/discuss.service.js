@@ -311,3 +311,38 @@ export const toggleReaction = async (messageId, empId, emoji) => {
 
   return repo.toggleReaction(messageId, empId, emoji);
 };
+
+/* =====================================================
+   DIRECT MESSAGE (DM) SERVICES
+===================================================== */
+
+/**
+ * Idempotently open (get-or-create) a DM channel between two employees.
+ * Both must belong to the same company.
+ * Returns { channelId, isNew } — the socket layer uses isNew to know
+ * whether to broadcast a 'dm:created' event to the peer.
+ */
+export const getOrStartDm = async (companyId, initiatorEmpId, peerEmpId) => {
+  if (initiatorEmpId === peerEmpId) throw new Error('Cannot DM yourself');
+
+  // Verify peer belongs to the same company
+  const peer = await repo.getEmployeeById(peerEmpId, companyId);
+  if (!peer) throw new Error('Peer employee not found in your organisation');
+
+  const channelId = await repo.getOrCreateDmChannel(companyId, initiatorEmpId, peerEmpId, initiatorEmpId);
+  return { channelId, peer };
+};
+
+/**
+ * Get all DM conversations for an employee.
+ */
+export const getDmChannels = async (companyId, empId) => {
+  return repo.getDmChannelsForEmployee(companyId, empId);
+};
+
+/**
+ * Get all company employees (for the new-DM picker).
+ */
+export const getCompanyEmployees = async (companyId, excludeEmpId) => {
+  return repo.getCompanyEmployees(companyId, excludeEmpId);
+};

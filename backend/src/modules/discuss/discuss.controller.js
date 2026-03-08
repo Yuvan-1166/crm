@@ -493,3 +493,60 @@ export const getCallParticipantHistory = async (req, res, next) => {
     res.json(participants);
   } catch (error) { next(error); }
 };
+
+/* =====================================================
+   DIRECT MESSAGE (DM) CONTROLLERS
+===================================================== */
+
+/**
+ * GET /discuss/dms
+ * List all DM conversations for the authenticated employee.
+ */
+export const getDmChannels = async (req, res, next) => {
+  try {
+    const { empId, companyId } = req.user;
+    const dms = await discussService.getDmChannels(companyId, empId);
+    res.json(dms);
+  } catch (error) { next(error); }
+};
+
+/**
+ * POST /discuss/dms
+ * Get or create a DM channel with a given employee.
+ * Body: { peerEmpId: number }
+ * Returns: { channelId, peer }
+ */
+export const startDm = async (req, res, next) => {
+  try {
+    const { empId, companyId } = req.user;
+    const peerEmpId = parseInt(req.body.peerEmpId);
+
+    if (!peerEmpId || isNaN(peerEmpId)) {
+      return res.status(400).json({ message: 'peerEmpId is required' });
+    }
+
+    const result = await discussService.getOrStartDm(companyId, empId, peerEmpId);
+    res.json(result);
+  } catch (error) {
+    if (error.message === 'Cannot DM yourself') {
+      return res.status(400).json({ message: error.message });
+    }
+    if (error.message === 'Peer employee not found in your organisation') {
+      return res.status(404).json({ message: error.message });
+    }
+    next(error);
+  }
+};
+
+/**
+ * GET /discuss/dms/employees
+ * Return all active employees in the company (excluding self) for the new-DM picker.
+ */
+export const getDmEmployees = async (req, res, next) => {
+  try {
+    const { empId, companyId } = req.user;
+    const employees = await discussService.getCompanyEmployees(companyId, empId);
+    res.json(employees);
+  } catch (error) { next(error); }
+};
+
