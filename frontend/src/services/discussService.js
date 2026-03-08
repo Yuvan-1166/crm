@@ -121,8 +121,27 @@ export const getMyMentions = async () => {
   return data;
 };
 
-export const searchMessages = async (query) => {
-  const { data } = await api.get('/discuss/search', { params: { q: query } });
+export const searchMessages = async (query, channelId = null) => {
+  const params = { q: query };
+  if (channelId) params.channelId = channelId;
+  const { data } = await api.get('/discuss/search', { params });
+  return data;
+};
+
+// ---- Pinned Messages ----
+
+export const getPins = async (channelId) => {
+  const { data } = await api.get(`/discuss/channels/${channelId}/pins`);
+  return data;
+};
+
+export const pinMessage = async (channelId, messageId) => {
+  const { data } = await api.post(`/discuss/channels/${channelId}/pins`, { messageId });
+  return data;
+};
+
+export const unpinMessage = async (channelId, messageId) => {
+  const { data } = await api.delete(`/discuss/channels/${channelId}/pins/${messageId}`);
   return data;
 };
 

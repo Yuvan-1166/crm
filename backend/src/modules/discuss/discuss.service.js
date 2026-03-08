@@ -192,6 +192,7 @@ export const sendMessage = async (channelId, empId, { content, parentMessageId, 
 
   const message = await repo.getMessageById(messageId);
   message.mentions = [];
+  message.reactions = []; // Brand-new message has no reactions yet
 
   await repo.updateLastRead(channelId, empId);
   return message;
@@ -202,7 +203,11 @@ export const getMessages = async (channelId, empId, { limit = 50, before = null 
   if (!member) throw new Error("Not a member of this channel");
 
   const messages = await repo.getMessages(channelId, Math.min(limit, 100), before);
-  return messages;
+  if (messages.length === 0) return messages;
+
+  // Bulk-fetch reactions for all returned message IDs — single extra round-trip
+  const reactionsMap = await repo.getReactionsForMessages(messages.map(m => m.message_id));
+  return messages.map(m => ({ ...m, reactions: reactionsMap[m.message_id] || [] }));
 };
 
 export const editMessage = async (messageId, empId, content) => {
@@ -232,7 +237,10 @@ export const deleteMessage = async (messageId, empId, role) => {
 };
 
 export const getThread = async (parentMessageId) => {
-  return repo.getThreadReplies(parentMessageId);
+  const replies = await repo.getThreadReplies(parentMessageId);
+  if (replies.length === 0) return replies;
+  const reactionsMap = await repo.getReactionsForMessages(replies.map(r => r.message_id));
+  return replies.map(r => ({ ...r, reactions: reactionsMap[r.message_id] || [] }));
 };
 
 /* =====================================================
@@ -243,8 +251,63 @@ export const getMyMentions = async (empId) => {
   return repo.getMentionsForEmployee(empId);
 };
 
-export const searchMessages = async (companyId, empId, query) => {
+export const searchMessages = async (companyId, empId, query, channelId = null) => {
   if (!query || query.trim().length < 2) throw new Error("Search query too short");
   const clean = sanitiseText(query).slice(0, 100);
-  return repo.searchMessagesLike(companyId, empId, clean);
+  return repo.searchMessagesLike(companyId, empId, clean, channelId);
+};
+
+/* =====================================================
+   PINNED MESSAGE SERVICES
+===================================================== */
+
+export const getPins = async (channelId, empId) => {
+  const member = await repo.isMember(channelId, empId);
+  if (!member) throw new Error('Not a member of this channel');
+  return repo.getPinnedMessages(channelId);
+};
+
+export const pinMessage = async (channelId, messageId, empId) => {
+  const member = await repo.isMember(channelId, empId);
+  if (!member) throw new Error('Not a member of this channel');
+
+  const msg = await repo.getMessageById(messageId);
+  if (!msg) throw new Error('Message not found');
+  if (msg.channel_id !== channelId) throw new Error('Message does not belong to this channel');
+  if (msg.parent_message_id) throw new Error('Thread replies cannot be pinned');
+  if (msg.is_deleted) throw new Error('Cannot pin a deleted message');
+
+  await repo.pinMessage(channelId, messageId, empId);
+  return repo.getPinnedMessages(channelId);
+};
+
+export const unpinMessage = async (channelId, messageId, empId) => {
+  const member = await repo.isMember(channelId, empId);
+  if (!member) throw new Error('Not a member of this channel');
+  await repo.unpinMessage(channelId, messageId);
+  return repo.getPinnedMessages(channelId);
+};
+
+/* =====================================================
+   EMOJI REACTION SERVICES
+===================================================== */
+
+/** Allowed emoji set — server-side whitelist prevents arbitrary Unicode injection */
+const ALLOWED_EMOJIS = new Set(['👍', '❤️', '😂', '😮', '😢', '🙌']);
+
+/**
+ * Toggle an emoji reaction on a message.
+ * Returns updated reactions array for that message, broadcast-ready.
+ */
+export const toggleReaction = async (messageId, empId, emoji) => {
+  if (!ALLOWED_EMOJIS.has(emoji)) throw new Error('Emoji not allowed');
+
+  const msg = await repo.getMessageById(messageId);
+  if (!msg) throw new Error('Message not found');
+  if (msg.is_deleted) throw new Error('Cannot react to a deleted message');
+
+  const member = await repo.isMember(msg.channel_id, empId);
+  if (!member) throw new Error('Not a member of this channel');
+
+  return repo.toggleReaction(messageId, empId, emoji);
 };

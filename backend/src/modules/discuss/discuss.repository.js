@@ -255,10 +255,12 @@ export const getMessages = async (channelId, limit = 50, before = null) => {
     SELECT m.message_id, m.channel_id, m.sender_emp_id, m.content,
            m.parent_message_id, m.is_edited, m.is_deleted, m.created_at, m.updated_at,
            m.attachment_url, m.attachment_type, m.attachment_name, m.attachment_size,
-           e.name AS sender_name, e.email AS sender_email, e.role AS sender_role
+           e.name AS sender_name, e.email AS sender_email, e.role AS sender_role,
+           (SELECT COUNT(*) FROM discuss_messages r
+             WHERE r.parent_message_id = m.message_id AND r.is_deleted = FALSE) AS reply_count
     FROM discuss_messages m
     JOIN employees e ON e.emp_id = m.sender_emp_id
-    WHERE m.channel_id = ? AND m.is_deleted = FALSE`;
+    WHERE m.channel_id = ? AND m.parent_message_id IS NULL AND m.is_deleted = FALSE`;
   const params = [channelId];
 
   if (before) {
@@ -312,7 +314,7 @@ export const softDeleteMessage = async (messageId) => {
 export const getThreadReplies = async (parentMessageId, limit = 50) => {
   const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 100));
   const [rows] = await db.execute(
-    `SELECT m.*, e.name AS sender_name, e.email AS sender_email
+    `SELECT m.*, e.name AS sender_name, e.email AS sender_email, e.role AS sender_role
      FROM discuss_messages m
      JOIN employees e ON e.emp_id = m.sender_emp_id
      WHERE m.parent_message_id = ? AND m.is_deleted = FALSE
@@ -400,23 +402,166 @@ export const searchMessages = async (companyId, empId, query, limit = 30) => {
   return rows;
 };
 
+/* =====================================================
+   PINNED MESSAGES
+===================================================== */
+
+/**
+ * Return all pinned messages for a channel, newest pin first.
+ * Joins to messages + employees so callers get a complete payload.
+ * Hard-limited to 50 rows — prevents abuse, more than enough in practice.
+ */
+export const getPinnedMessages = async (channelId) => {
+  const [rows] = await db.execute(
+    `SELECT p.id AS pin_id, p.pinned_at, p.pinned_by,
+       m.message_id, m.channel_id, m.sender_emp_id,
+       m.content, m.created_at,
+       m.attachment_url, m.attachment_type, m.attachment_name,
+       e.name  AS sender_name,
+       pb.name AS pinned_by_name
+     FROM discuss_pinned_messages p
+     JOIN discuss_messages m  ON m.message_id = p.message_id AND m.is_deleted = FALSE
+     JOIN employees e         ON e.emp_id  = m.sender_emp_id
+     JOIN employees pb        ON pb.emp_id = p.pinned_by
+     WHERE p.channel_id = ?
+     ORDER BY p.pinned_at DESC
+     LIMIT 50`,
+    [channelId]
+  );
+  return rows;
+};
+
+/**
+ * Pin a message.  INSERT IGNORE silently skips duplicate pins.
+ */
+export const pinMessage = async (channelId, messageId, empId) => {
+  await db.execute(
+    `INSERT IGNORE INTO discuss_pinned_messages (channel_id, message_id, pinned_by)
+     VALUES (?, ?, ?)`,
+    [channelId, messageId, empId]
+  );
+};
+
+/**
+ * Unpin a message.
+ */
+export const unpinMessage = async (channelId, messageId) => {
+  await db.execute(
+    `DELETE FROM discuss_pinned_messages
+     WHERE channel_id = ? AND message_id = ?`,
+    [channelId, messageId]
+  );
+};
+
+/* =====================================================
+   EMOJI REACTIONS
+===================================================== */
+
+/**
+ * Bulk-fetch reactions for an array of message IDs.
+ * Returns a map: { [messageId]: [{ emoji, count, empIds }] }
+ *
+ * Single query using GROUP_CONCAT — O(1) round-trip regardless of batch size.
+ * emp_ids come back as comma-separated strings and are parsed to int arrays.
+ */
+export const getReactionsForMessages = async (messageIds) => {
+  if (!messageIds || messageIds.length === 0) return {};
+
+  const placeholders = messageIds.map(() => '?').join(',');
+  const [rows] = await db.execute(
+    `SELECT   message_id,
+              emoji,
+              COUNT(*)              AS \`count\`,
+              GROUP_CONCAT(emp_id)  AS emp_ids_str
+     FROM     discuss_reactions
+     WHERE    message_id IN (${placeholders})
+     GROUP BY message_id, emoji`,
+    messageIds
+  );
+
+  const map = {};
+  for (const row of rows) {
+    const mid = row.message_id;
+    if (!map[mid]) map[mid] = [];
+    map[mid].push({
+      emoji:   row.emoji,
+      count:   row.count,
+      empIds:  row.emp_ids_str.split(',').map(Number),
+    });
+  }
+  return map;
+};
+
+/**
+ * Toggle a reaction (add if absent, remove if present).
+ * Returns the updated reaction list for that message.
+ */
+export const toggleReaction = async (messageId, empId, emoji) => {
+  const [existing] = await db.execute(
+    `SELECT id FROM discuss_reactions
+     WHERE message_id = ? AND emp_id = ? AND emoji = ?`,
+    [messageId, empId, emoji]
+  );
+
+  if (existing.length > 0) {
+    await db.execute(
+      `DELETE FROM discuss_reactions
+       WHERE message_id = ? AND emp_id = ? AND emoji = ?`,
+      [messageId, empId, emoji]
+    );
+  } else {
+    await db.execute(
+      `INSERT INTO discuss_reactions (message_id, emp_id, emoji)
+       VALUES (?, ?, ?)`,
+      [messageId, empId, emoji]
+    );
+  }
+
+  // Return updated aggregated reactions for this message
+  const [rows] = await db.execute(
+    `SELECT   emoji,
+              COUNT(*)             AS \`count\`,
+              GROUP_CONCAT(emp_id) AS emp_ids_str
+     FROM     discuss_reactions
+     WHERE    message_id = ?
+     GROUP BY emoji`,
+    [messageId]
+  );
+
+  return rows.map(r => ({
+    emoji:   r.emoji,
+    count:   r.count,
+    empIds:  r.emp_ids_str.split(',').map(Number),
+  }));
+};
+
 /**
  * Fallback search using LIKE (if FULLTEXT index not present)
+ * @param {string|null} channelId - when provided, restricts results to that channel
  */
-export const searchMessagesLike = async (companyId, empId, query, limit = 30) => {
+export const searchMessagesLike = async (companyId, empId, query, channelId = null, limit = 30) => {
   const safeLimit = Math.max(1, Math.min(parseInt(limit) || 30, 100));
+  const params = [companyId, empId, `%${query}%`];
+  let channelClause = '';
+  if (channelId) {
+    channelClause = 'AND m.channel_id = ?';
+    params.push(channelId);
+  }
   const [rows] = await db.execute(
-    `SELECT m.message_id, m.channel_id, m.content, m.created_at,
+    `SELECT m.message_id, m.channel_id, m.sender_emp_id, m.content, m.created_at,
        c.name AS channel_name,
        e.name AS sender_name
      FROM discuss_messages m
      JOIN discuss_channels c ON c.channel_id = m.channel_id AND c.company_id = ?
      JOIN discuss_channel_members cm ON cm.channel_id = m.channel_id AND cm.emp_id = ?
      JOIN employees e ON e.emp_id = m.sender_emp_id
-     WHERE m.is_deleted = FALSE AND m.content LIKE ?
+     WHERE m.is_deleted = FALSE
+       AND m.parent_message_id IS NULL
+       AND m.content LIKE ?
+       ${channelClause}
      ORDER BY m.message_id DESC
      LIMIT ${safeLimit}`,
-    [companyId, empId, `%${query}%`]
+    params
   );
   return rows;
 };
