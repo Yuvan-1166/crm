@@ -4,7 +4,7 @@ import {
   Hash, Lock, Plus, Search, Users, X, Send, Pencil, Trash2,
   MessageSquare, AtSign, ChevronDown, UserPlus, Check, Bell,
   Paperclip, Mic, MicOff, FileDown, Music, Image as ImageIcon,
-  Phone, Pin, Smile, MoreHorizontal
+  Phone, Pin, Smile, MoreHorizontal, MessageCircle, ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket, useSocketEvent } from '../../context/SocketContext';
@@ -59,58 +59,244 @@ const renderContent = (content) => {
    CHANNEL LIST SIDEBAR
 ===================================================== */
 
-const ChannelList = memo(({ channels, activeChannelId, onSelect, onCreateClick, onBrowseClick, collapsed }) => {
+/* =====================================================
+   NEW DM PICKER MODAL
+   Shown when user clicks "+" next to "Direct Messages"
+===================================================== */
+
+const NewDmModal = memo(({ onClose, onStart, currentEmpId }) => {
+  const [employees, setEmployees] = useState([]);
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [opening, setOpening] = useState(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    discussService.getDmEmployees()
+      .then(setEmployees)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return employees;
+    return employees.filter(e =>
+      e.name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q)
+    );
+  }, [employees, query]);
+
+  const handleStart = async (emp) => {
+    setOpening(emp.emp_id);
+    try {
+      const result = await onStart(emp);
+      if (result) onClose();
+    } finally {
+      setOpening(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-800">New Direct Message</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 py-3 border-b border-gray-100">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search by name or email..."
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        {/* Employee list */}
+        <div className="flex-1 overflow-y-auto max-h-72 p-2">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-6">
+              {query ? 'No employees match your search' : 'No employees available'}
+            </p>
+          ) : (
+            filtered.map(emp => (
+              <button
+                key={emp.emp_id}
+                onClick={() => handleStart(emp)}
+                disabled={opening === emp.emp_id}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-left group"
+              >
+                {emp.profile_picture ? (
+                  <img src={emp.profile_picture} alt={emp.name}
+                    className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center flex-shrink-0">
+                    <span className="text-white text-xs font-bold">
+                      {emp.name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{emp.name}</p>
+                  <p className="text-xs text-gray-400 truncate">{emp.email}</p>
+                </div>
+                {opening === emp.emp_id ? (
+                  <div className="w-4 h-4 border-2 border-sky-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                ) : (
+                  <MessageCircle className="w-4 h-4 text-gray-300 group-hover:text-sky-400 flex-shrink-0 transition-colors" />
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+NewDmModal.displayName = 'NewDmModal';
+
+/* =====================================================
+   CHANNEL LIST SIDEBAR
+===================================================== */
+
+const ChannelList = memo(({ channels, dmChannels, activeChannelId, onSelect, onCreateClick, onBrowseClick, onNewDmClick, collapsed }) => {
   if (collapsed) return null;
+
+  const [channelsExpanded, setChannelsExpanded] = useState(true);
+  const [dmsExpanded, setDmsExpanded] = useState(true);
 
   return (
     <div className="w-64 border-r border-gray-200 bg-gray-50 flex flex-col h-full">
-      <div className="p-3 border-b border-gray-200 flex items-center justify-between">
-        <h2 className="font-semibold text-sm text-gray-700 uppercase tracking-wider">Channels</h2>
-        <div className="flex items-center gap-1">
+      {/* ---- Channels Section ---- */}
+      <div className="border-b border-gray-100">
+        <div className="px-3 py-2.5 flex items-center justify-between">
           <button
-            onClick={onBrowseClick}
-            className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
-            title="Browse public channels"
+            onClick={() => setChannelsExpanded(p => !p)}
+            className="flex items-center gap-1 text-sm font-semibold text-gray-700 uppercase tracking-wider hover:text-gray-900 transition-colors"
           >
-            <Search className="w-4 h-4 text-gray-500" />
+            <ChevronRight className={`w-3.5 h-3.5 transition-transform ${channelsExpanded ? 'rotate-90' : ''}`} />
+            Channels
+          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onBrowseClick}
+              className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
+              title="Browse public channels"
+            >
+              <Search className="w-4 h-4 text-gray-500" />
+            </button>
+            <button
+              onClick={onCreateClick}
+              className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
+              title="Create channel"
+            >
+              <Plus className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
+        </div>
+
+        {channelsExpanded && (
+          <div className="pb-2 px-2 space-y-0.5">
+            {channels.map((ch) => {
+              const isActive = ch.channel_id === activeChannelId;
+              const Icon = ch.channel_type === 'PRIVATE' ? Lock : Hash;
+              return (
+                <button
+                  key={ch.channel_id}
+                  onClick={() => onSelect(ch.channel_id)}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                    isActive
+                      ? 'bg-sky-100 text-sky-800 font-semibold'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  <span className="flex-1 text-left truncate">{ch.name}</span>
+                  {ch.unread_count > 0 && (
+                    <span className="bg-sky-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                      {ch.unread_count > 99 ? '99+' : ch.unread_count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            {channels.length === 0 && (
+              <p className="text-xs text-gray-400 text-center py-3">No channels yet</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ---- Direct Messages Section ---- */}
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="px-3 py-2.5 flex items-center justify-between flex-shrink-0">
+          <button
+            onClick={() => setDmsExpanded(p => !p)}
+            className="flex items-center gap-1 text-sm font-semibold text-gray-700 uppercase tracking-wider hover:text-gray-900 transition-colors"
+          >
+            <ChevronRight className={`w-3.5 h-3.5 transition-transform ${dmsExpanded ? 'rotate-90' : ''}`} />
+            Direct Messages
           </button>
           <button
-            onClick={onCreateClick}
+            onClick={onNewDmClick}
             className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
-            title="Create channel"
+            title="New direct message"
           >
             <Plus className="w-4 h-4 text-gray-500" />
           </button>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {channels.map((ch) => {
-          const isActive = ch.channel_id === activeChannelId;
-          const Icon = ch.channel_type === 'PRIVATE' ? Lock : Hash;
-          return (
-            <button
-              key={ch.channel_id}
-              onClick={() => onSelect(ch.channel_id)}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
-                isActive
-                  ? 'bg-sky-100 text-sky-800 font-semibold'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              <span className="flex-1 text-left truncate">{ch.name}</span>
-              {ch.unread_count > 0 && (
-                <span className="bg-sky-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-                  {ch.unread_count > 99 ? '99+' : ch.unread_count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-
-        {channels.length === 0 && (
-          <p className="text-xs text-gray-400 text-center py-4">No channels yet</p>
+        {dmsExpanded && (
+          <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+            {dmChannels.map((dm) => {
+              const isActive = dm.channel_id === activeChannelId;
+              const initial = dm.peer_name?.charAt(0).toUpperCase() || '?';
+              return (
+                <button
+                  key={dm.channel_id}
+                  onClick={() => onSelect(dm.channel_id)}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                    isActive
+                      ? 'bg-sky-100 text-sky-800 font-semibold'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {/* Avatar */}
+                  {dm.peer_avatar ? (
+                    <img src={dm.peer_avatar} alt={dm.peer_name}
+                      className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center flex-shrink-0">
+                      <span className="text-white text-[9px] font-bold">{initial}</span>
+                    </div>
+                  )}
+                  <span className="flex-1 text-left truncate">{dm.peer_name}</span>
+                  {dm.unread_count > 0 && (
+                    <span className="bg-sky-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                      {dm.unread_count > 99 ? '99+' : dm.unread_count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            {dmChannels.length === 0 && (
+              <p className="text-xs text-gray-400 text-center py-3">No messages yet</p>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -1743,19 +1929,32 @@ PinnedMessagesPanel.displayName = 'PinnedMessagesPanel';
    CHANNEL HEADER
 ===================================================== */
 
-const ChannelHeader = memo(({ channel, memberCount, onMembersClick, onSearchClick, isSearchOpen, onPinsClick, isPinsOpen, pinnedCount, onCallClick, isInCall }) => {
+const ChannelHeader = memo(({ channel, memberCount, onMembersClick, onSearchClick, isSearchOpen, onPinsClick, isPinsOpen, pinnedCount, onCallClick, isInCall, dmPeer }) => {
   if (!channel) return null;
-  const Icon = channel.channel_type === 'PRIVATE' ? Lock : Hash;
+  const isDm = channel.channel_type === 'DM';
+  const Icon = isDm ? MessageCircle : (channel.channel_type === 'PRIVATE' ? Lock : Hash);
+  const displayName = isDm ? (dmPeer?.peer_name || 'Direct Message') : channel.name;
 
   return (
     <div className="h-14 border-b border-gray-200 bg-white flex items-center justify-between px-4">
       <div className="flex items-center gap-2">
-        <Icon className="w-5 h-5 text-gray-400" />
-        <h2 className="font-semibold text-gray-900">{channel.name}</h2>
-        {channel.channel_type === 'PRIVATE' && (
+        {isDm && dmPeer?.peer_avatar ? (
+          <img src={dmPeer.peer_avatar} alt={displayName}
+            className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+        ) : isDm ? (
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center flex-shrink-0">
+            <span className="text-white text-xs font-bold">
+              {displayName.charAt(0).toUpperCase()}
+            </span>
+          </div>
+        ) : (
+          <Icon className="w-5 h-5 text-gray-400" />
+        )}
+        <h2 className="font-semibold text-gray-900">{displayName}</h2>
+        {!isDm && channel.channel_type === 'PRIVATE' && (
           <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full border border-indigo-100">Private</span>
         )}
-        {channel.description && (
+        {!isDm && channel.description && (
           <span className="text-sm text-gray-400 ml-2 hidden sm:inline">{channel.description}</span>
         )}
       </div>
@@ -1799,10 +1998,12 @@ const ChannelHeader = memo(({ channel, memberCount, onMembersClick, onSearchClic
             </span>
           )}
         </button>
-        <button onClick={onMembersClick} className="flex items-center gap-1 px-2 py-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Members">
-          <Users className="w-4 h-4 text-gray-500" />
-          <span className="text-xs text-gray-500">{memberCount || 0}</span>
-        </button>
+        {!isDm && (
+          <button onClick={onMembersClick} className="flex items-center gap-1 px-2 py-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Members">
+            <Users className="w-4 h-4 text-gray-500" />
+            <span className="text-xs text-gray-500">{memberCount || 0}</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -2024,6 +2225,8 @@ const DiscussView = () => {
   }
 
   const [channels, setChannels] = useState([]);
+  const [dmChannels, setDmChannels] = useState([]);
+  const [showNewDmModal, setShowNewDmModal] = useState(false);
   const [activeChannelId, setActiveChannelId] = useState(null);
   const [activeChannel, setActiveChannel] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -2079,6 +2282,7 @@ const DiscussView = () => {
 
   useEffect(() => {
     loadChannels();
+    loadDmChannels();
     loadDeals();
   }, []);
 
@@ -2091,6 +2295,15 @@ const DiscussView = () => {
       }
     } catch (err) {
       console.error('Failed to load channels:', err);
+    }
+  };
+
+  const loadDmChannels = async () => {
+    try {
+      const data = await discussService.getDmChannels();
+      setDmChannels(data);
+    } catch (err) {
+      console.error('Failed to load DM channels:', err);
     }
   };
 
@@ -2270,6 +2483,14 @@ const DiscussView = () => {
           : ch
       )
     );
+    // Also update DM unread counts
+    setDmChannels(prev =>
+      prev.map(dm =>
+        dm.channel_id === msg.channel_id && dm.channel_id !== activeChannelId
+          ? { ...dm, unread_count: (dm.unread_count || 0) + 1, last_message_preview: msg.content }
+          : dm
+      )
+    );
   }, [activeChannelId]);
 
   const handleEditedMessage = useCallback((msg) => {
@@ -2415,6 +2636,34 @@ const DiscussView = () => {
     loadChannels();
   };
 
+  /**
+   * Open (get-or-create) a DM thread with the selected employee.
+   * Called from the NewDmModal. Navigates to the DM channel and
+   * emits dm:opened so the peer's sidebar refreshes in real time.
+   */
+  const handleStartDm = useCallback(async (emp) => {
+    try {
+      const { channelId, peer } = await discussService.startDm(emp.emp_id);
+
+      // Notify the peer via socket so their sidebar refreshes without polling
+      emit('dm:opened', { channelId, peerEmpId: emp.emp_id });
+
+      // Refresh our own DM list then navigate to the new/existing DM
+      await loadDmChannels();
+      selectChannel(channelId);
+
+      return true; // signals modal to close
+    } catch (err) {
+      console.error('Failed to start DM:', err);
+      return false;
+    }
+  }, [emit, selectChannel]);
+
+  // When our peer opens a new DM with us, refresh our DM list
+  useSocketEvent('dm:new', useCallback(() => {
+    loadDmChannels();
+  }, []));
+
   const handleMembersInvited = async () => {
     if (!activeChannelId) return;
     try {
@@ -2430,6 +2679,9 @@ const DiscussView = () => {
       setChannels(prev => prev.map(ch =>
         ch.channel_id === activeChannelId ? { ...ch, unread_count: 0 } : ch
       ));
+      setDmChannels(prev => prev.map(dm =>
+        dm.channel_id === activeChannelId ? { ...dm, unread_count: 0 } : dm
+      ));
     }
   }, [activeChannelId]);
 
@@ -2437,6 +2689,13 @@ const DiscussView = () => {
     () => new Set(pinnedMessages.map(p => p.message_id)),
     [pinnedMessages]
   );
+
+  // If the active channel is a DM, find the peer info for the header
+  const activeDmPeer = useMemo(() =>
+    activeChannel?.channel_type === 'DM'
+      ? dmChannels.find(d => d.channel_id === activeChannelId) || null
+      : null,
+  [activeChannel, dmChannels, activeChannelId]);
 
   const typingNames = useMemo(() =>
     typingUsers
@@ -2450,10 +2709,12 @@ const DiscussView = () => {
       {/* Channel Sidebar */}
       <ChannelList
         channels={channels}
+        dmChannels={dmChannels}
         activeChannelId={activeChannelId}
         onSelect={selectChannel}
         onCreateClick={() => setShowCreateModal(true)}
         onBrowseClick={() => setShowBrowse(true)}
+        onNewDmClick={() => setShowNewDmModal(true)}
       />
 
       {/* Centre: chat column + thread panel side-by-side */}
@@ -2473,6 +2734,7 @@ const DiscussView = () => {
                 pinnedCount={pinnedMessages.length}
                 onCallClick={handleStartCall}
                 isInCall={audioCall?.callState === 'active' && audioCall?.callChannelId === activeChannelId}
+                dmPeer={activeDmPeer}
               />
 
               {/* Active Call Bar — shown inline when there's an ongoing call in this channel */}
@@ -2584,6 +2846,15 @@ const DiscussView = () => {
         <CreateChannelModal
           onClose={() => setShowCreateModal(false)}
           onCreated={handleChannelCreated}
+        />
+      )}
+
+      {/* New Direct Message Picker Modal */}
+      {showNewDmModal && (
+        <NewDmModal
+          onClose={() => setShowNewDmModal(false)}
+          onStart={handleStartDm}
+          currentEmpId={user?.emp_id}
         />
       )}
 

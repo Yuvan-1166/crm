@@ -342,6 +342,35 @@ export const initSocketIO = (httpServer) => {
     });
 
     /* ---------------------------------------------------
+       DIRECT MESSAGES — real-time new-DM notification
+       
+       Fired by the frontend after POST /discuss/dms resolves.
+       If the DM thread was just created (isNew flag from REST response),
+       the client emits dm:opened so the peer's sidebar refreshes immediately.
+       
+       No DB writes here — the REST POST already created the channel.
+       This is purely a push notification to the peer.
+    --------------------------------------------------- */
+
+    socket.on("dm:opened", async ({ channelId, peerEmpId }) => {
+      try {
+        // Security: verify the sender is actually a member of this DM channel
+        const member = await repo.isMember(channelId, empId);
+        if (!member) return;
+
+        // Push the new DM channel to the peer's personal room so their sidebar refreshes
+        socket.nsp.to(`user:${peerEmpId}`).emit("dm:new", {
+          channelId,
+          fromEmpId: empId,
+          fromName: socket.user.name,
+        });
+      } catch (err) {
+        // Non-critical — peer will see the DM on next page load
+        console.error("dm:opened notification failed:", err.message);
+      }
+    });
+
+    /* ---------------------------------------------------
        DISCONNECT
     --------------------------------------------------- */
 

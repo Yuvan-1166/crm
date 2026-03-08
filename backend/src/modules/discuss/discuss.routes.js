@@ -163,4 +163,17 @@ router.get("/mentions", discussController.getMyMentions);
 // Search messages
 router.get("/search", discussController.searchMessages);
 
+/* =====================================================
+   DIRECT MESSAGE (DM) ROUTES
+===================================================== */
+
+// List all DM conversations for the current employee
+router.get("/dms", discussController.getDmChannels);
+
+// Start or open a DM with a specific employee (idempotent get-or-create)
+router.post("/dms", discussController.startDm);
+
+// List all company employees for the new-DM picker (exclude self)
+router.get("/dms/employees", discussController.getDmEmployees);
+
 export default router;

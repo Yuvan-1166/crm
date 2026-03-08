@@ -166,3 +166,34 @@ export const getCallLogs = async (channelId) => {
   const { data } = await api.get(`/discuss/channels/${channelId}/call/logs`);
   return data;
 };
+
+// ---- Direct Messages (DMs) ----
+
+/**
+ * Get all DM conversations for the authenticated employee.
+ * @returns {Promise<Array<{channel_id, peer_emp_id, peer_name, peer_avatar, unread_count, last_message_at, last_message_preview}>>}
+ */
+export const getDmChannels = async () => {
+  const { data } = await api.get('/discuss/dms');
+  return data;
+};
+
+/**
+ * Start or open an existing DM with the specified employee (idempotent).
+ * @param {number} peerEmpId
+ * @returns {Promise<{ channelId: number, peer: object }>}
+ */
+export const startDm = async (peerEmpId) => {
+  const { data } = await api.post('/discuss/dms', { peerEmpId });
+  return data;
+};
+
+/**
+ * Get all active company employees for the new-DM picker.
+ * @returns {Promise<Array<{ emp_id, name, email, profile_picture, role }>>}
+ */
+export const getDmEmployees = async () => {
+  const { data } = await api.get('/discuss/dms/employees');
+  return data;
+};
+

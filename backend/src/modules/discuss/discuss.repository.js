@@ -49,7 +49,7 @@ export const getChannelsForEmployee = async (companyId, empId) => {
         WHERE channel_id = c.channel_id) AS member_count
      FROM discuss_channels c
      JOIN discuss_channel_members cm ON cm.channel_id = c.channel_id AND cm.emp_id = ?
-     WHERE c.company_id = ?
+     WHERE c.company_id = ? AND c.channel_type != 'DM'
      ORDER BY c.is_default DESC, c.name ASC`,
     [empId, companyId]
   );
@@ -739,6 +739,110 @@ export const getCallParticipants = async (callId) => {
      WHERE dcp.call_id = ?
      ORDER BY dcp.joined_at ASC`,
     [callId]
+  );
+  return rows;
+};
+
+/* =====================================================
+   DIRECT MESSAGE (DM) QUERIES
+===================================================== */
+
+/**
+ * Verify an employee belongs to a specific company.
+ * Used by the DM service to ensure cross-company DMs are blocked.
+ */
+export const getEmployeeById = async (empId, companyId) => {
+  const [[row]] = await db.execute(
+    `SELECT emp_id, name, email FROM employees
+     WHERE emp_id = ? AND company_id = ?`,
+    [empId, companyId]
+  );
+  return row || null;
+};
+
+/**
+ * Atomically get or create a DM channel between two employees.
+ * IDs are sorted (smaller first) so the unique key uq_dm_pair fires correctly.
+ * Returns the channel_id of the DM thread.
+ */
+export const getOrCreateDmChannel = async (companyId, empIdA, empIdB, createdBy) => {
+  const emp1 = Math.min(empIdA, empIdB);
+  const emp2 = Math.max(empIdA, empIdB);
+
+  // INSERT IGNORE — if the pair already exists, nothing changes
+  await db.execute(
+    `INSERT IGNORE INTO discuss_channels
+       (company_id, name, channel_type, dm_emp1_id, dm_emp2_id, description, is_default, created_by)
+     VALUES (?, '', 'DM', ?, ?, NULL, 0, ?)`,
+    [companyId, emp1, emp2, createdBy]
+  );
+
+  // Always SELECT after — handles both the insert and the pre-existing cases
+  const [[channel]] = await db.execute(
+    `SELECT channel_id FROM discuss_channels
+     WHERE company_id = ? AND dm_emp1_id = ? AND dm_emp2_id = ?`,
+    [companyId, emp1, emp2]
+  );
+
+  const channelId = channel.channel_id;
+
+  // Ensure both employees are members (INSERT IGNORE is idempotent)
+  await db.execute(
+    `INSERT IGNORE INTO discuss_channel_members (channel_id, emp_id)
+     VALUES (?, ?), (?, ?)`,
+    [channelId, emp1, channelId, emp2]
+  );
+
+  return channelId;
+};
+
+/**
+ * List all DM channels for an employee with peer info + unread counts.
+ * Returns peers ordered by most-recently-active first.
+ */
+export const getDmChannelsForEmployee = async (companyId, empId) => {
+  const [rows] = await db.execute(
+    `SELECT
+       c.channel_id,
+       c.dm_emp1_id,
+       c.dm_emp2_id,
+       c.channel_type,
+       e.emp_id   AS peer_emp_id,
+       e.name     AS peer_name,
+       e.email    AS peer_email,
+       cm.last_read_at,
+       (SELECT COUNT(*) FROM discuss_messages m
+        WHERE m.channel_id = c.channel_id
+          AND m.is_deleted = FALSE
+          AND m.created_at > cm.last_read_at) AS unread_count,
+       (SELECT m2.created_at FROM discuss_messages m2
+        WHERE m2.channel_id = c.channel_id AND m2.is_deleted = FALSE
+        ORDER BY m2.created_at DESC LIMIT 1) AS last_message_at,
+       (SELECT m3.content FROM discuss_messages m3
+        WHERE m3.channel_id = c.channel_id AND m3.is_deleted = FALSE
+        ORDER BY m3.created_at DESC LIMIT 1) AS last_message_preview
+     FROM discuss_channels c
+     JOIN discuss_channel_members cm ON cm.channel_id = c.channel_id AND cm.emp_id = ?
+     -- join the PEER (the other person in the DM)
+     JOIN employees e ON e.emp_id = IF(c.dm_emp1_id = ?, c.dm_emp2_id, c.dm_emp1_id)
+     WHERE c.company_id = ? AND c.channel_type = 'DM'
+     ORDER BY last_message_at DESC, c.channel_id DESC`,
+    [empId, empId, companyId]
+  );
+  return rows;
+};
+
+/**
+ * Get all employees in the company for the DM "new conversation" picker.
+ * Excludes the requesting employee.
+ */
+export const getCompanyEmployees = async (companyId, excludeEmpId) => {
+  const [rows] = await db.execute(
+    `SELECT emp_id, name, email, role, department
+     FROM employees
+     WHERE company_id = ? AND emp_id != ?
+     ORDER BY name ASC`,
+    [companyId, excludeEmpId]
   );
   return rows;
 };
