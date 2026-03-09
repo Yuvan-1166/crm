@@ -1,6 +1,22 @@
 import api from './api';
 
 /**
+ * Get all employees (lightweight list) for the current user's company.
+ * Uses the authenticated user's companyId from the JWT — no extra param needed.
+ * @param {number} companyId - Company ID from auth context
+ * @returns {Promise<Array>} Array of { emp_id, name, email, role, department }
+ */
+export const getCompanyEmployees = async (companyId) => {
+  try {
+    const response = await api.get(`/employees/company/${companyId}`);
+    return response.data?.employees ?? response.data ?? [];
+  } catch (error) {
+    console.error('Error fetching company employees:', error);
+    throw error;
+  }
+};
+
+/**
  * Get all team members for the admin's company
  * @returns {Promise<Array>} List of employees with their performance stats
  */
