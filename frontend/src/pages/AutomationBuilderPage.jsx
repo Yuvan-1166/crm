@@ -7,6 +7,7 @@ import {
   Check, AlertTriangle
 } from 'lucide-react';
 import * as automationService from '../services/automationService';
+import { getCompanyEmployees } from '../services/employeeService';
 import { useAuth } from '../context/AuthContext';
 
 /* =====================================================
@@ -24,9 +25,43 @@ const ACTION_ICONS = {
 };
 
 /* =====================================================
+   EMPLOYEE SELECT — shared by all action types that
+   need to pick a team member. Stores emp_id as value.
+===================================================== */
+const EmployeeSelect = memo(({ value, onChange, employees, placeholder = 'Default (contact\'s assigned employee)', required = false }) => {
+  if (!employees || employees.length === 0) {
+    return (
+      <input
+        type="number"
+        placeholder="Employee ID (employees loading...)"
+        value={value || ''}
+        onChange={e => onChange(e.target.value ? parseInt(e.target.value, 10) : '')}
+        className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+      />
+    );
+  }
+
+  return (
+    <select
+      value={value || ''}
+      onChange={e => onChange(e.target.value ? parseInt(e.target.value, 10) : '')}
+      className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+    >
+      {!required && <option value="">{placeholder}</option>}
+      {employees.map(emp => (
+        <option key={emp.emp_id} value={emp.emp_id}>
+          {emp.name}{emp.role ? ` (${emp.role})` : ''}{emp.department ? ` — ${emp.department}` : ''}
+        </option>
+      ))}
+    </select>
+  );
+});
+EmployeeSelect.displayName = 'EmployeeSelect';
+
+/* =====================================================
    NODE COMPONENT (condition or action)
 ===================================================== */
-const WorkflowNode = memo(({ node, index, metadata, onUpdate, onRemove, totalNodes }) => {
+const WorkflowNode = memo(({ node, index, metadata, employees, onUpdate, onRemove, totalNodes }) => {
   const isCondition = node.type === 'condition';
   const Icon = isCondition ? Filter : (ACTION_ICONS[node.config?.action] || Zap);
   const borderColor = isCondition ? 'border-blue-300 bg-blue-50' : 'border-amber-300 bg-amber-50';
@@ -59,7 +94,7 @@ const WorkflowNode = memo(({ node, index, metadata, onUpdate, onRemove, totalNod
         {isCondition ? (
           <ConditionConfig node={node} metadata={metadata} onUpdate={onUpdate} />
         ) : (
-          <ActionConfig node={node} metadata={metadata} onUpdate={onUpdate} />
+          <ActionConfig node={node} metadata={metadata} employees={employees} onUpdate={onUpdate} />
         )}
 
         {/* Branch labels */}
@@ -139,7 +174,7 @@ ConditionConfig.displayName = 'ConditionConfig';
 /* =====================================================
    ACTION CONFIG
 ===================================================== */
-const ActionConfig = memo(({ node, metadata, onUpdate }) => {
+const ActionConfig = memo(({ node, metadata, employees, onUpdate }) => {
   const actions = metadata?.actions || [];
   const selectedAction = node.config?.action || '';
 
@@ -176,14 +211,23 @@ const ActionConfig = memo(({ node, metadata, onUpdate }) => {
             className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400/30" />
           <textarea placeholder="Message (use {{name}}, {{status}}, etc.)" rows={2} value={node.config?.message || ''} onChange={e => updateConfig('message', e.target.value)}
             className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400/30 resize-none" />
-          <input type="number" placeholder="Target Employee ID (optional — defaults to assigned)" value={node.config?.empId || ''} onChange={e => updateConfig('empId', e.target.value ? parseInt(e.target.value) : '')}
-            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400/30" />
+          <EmployeeSelect
+            value={node.config?.empId}
+            onChange={val => updateConfig('empId', val)}
+            employees={employees}
+            placeholder="Default (contact's assigned employee)"
+          />
         </div>
       )}
 
       {selectedAction === 'assign_user' && (
-        <input type="number" placeholder="Employee ID to assign" value={node.config?.empId || ''} onChange={e => updateConfig('empId', e.target.value ? parseInt(e.target.value) : '')}
-          className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400/30" />
+        <EmployeeSelect
+          value={node.config?.empId}
+          onChange={val => updateConfig('empId', val)}
+          employees={employees}
+          placeholder="Select employee to assign..."
+          required
+        />
       )}
 
       {selectedAction === 'create_task' && (
@@ -192,8 +236,14 @@ const ActionConfig = memo(({ node, metadata, onUpdate }) => {
             className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400/30" />
           <input placeholder="Description (optional)" value={node.config?.description || ''} onChange={e => updateConfig('description', e.target.value)}
             className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400/30" />
-          <input type="number" placeholder="Due in hours (default: 24)" value={node.config?.dueInHours || ''} onChange={e => updateConfig('dueInHours', e.target.value ? parseInt(e.target.value) : '')}
+          <input type="number" placeholder="Due in hours (default: 24)" value={node.config?.dueInHours || ''} onChange={e => updateConfig('dueInHours', e.target.value ? parseInt(e.target.value, 10) : '')}
             className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400/30" />
+          <EmployeeSelect
+            value={node.config?.empId}
+            onChange={val => updateConfig('empId', val)}
+            employees={employees}
+            placeholder="Assign task to (default: contact's employee)"
+          />
         </div>
       )}
 
@@ -257,11 +307,12 @@ const Connector = ({ label }) => (
 const AutomationBuilderPage = () => {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const basePath = isAdmin ? '/admin' : '';
   const isEdit = !!id;
 
   const [metadata, setMetadata] = useState(null);
+  const [employees, setEmployees] = useState([]);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [triggerType, setTriggerType] = useState('');
@@ -279,7 +330,13 @@ const AutomationBuilderPage = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        const meta = await automationService.getBuilderMetadata();
+        // Fetch metadata and employees in parallel for fast load
+        const companyId = user?.companyId;
+        const [meta, empList] = await Promise.all([
+          automationService.getBuilderMetadata(),
+          companyId ? getCompanyEmployees(companyId).catch(() => []) : Promise.resolve([]),
+        ]);
+        setEmployees(empList);
         setMetadata(meta);
 
         if (isEdit) {
@@ -483,6 +540,7 @@ const AutomationBuilderPage = () => {
                 node={node}
                 index={idx}
                 metadata={metadata}
+                employees={employees}
                 onUpdate={updateNode}
                 onRemove={removeNode}
                 totalNodes={nodes.length}
