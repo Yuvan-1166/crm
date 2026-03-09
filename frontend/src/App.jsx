@@ -38,8 +38,7 @@ const StageFollowupsPage = lazy(() => import('./pages/StageFollowupsPage'));
 const AdminTeamPage = lazy(() => import('./pages/AdminTeamPage'));
 const AdminAnalyticsPage = lazy(() => import('./pages/AdminAnalyticsPage'));
 
-// Page builder feature
-const PagesListPage = lazy(() => import('./pages/PagesListPage'));
+// Page builder feature (list redirects to /templates, builder/responses still use their own pages)
 const PageBuilderPage = lazy(() => import('./pages/PageBuilderPage'));
 const PageResponsesPage = lazy(() => import('./pages/PageResponsesPage'));
 
@@ -50,9 +49,13 @@ const DiscussPage = lazy(() => import('./pages/DiscussPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const FollowupsPage = lazy(() => import('./pages/FollowupsPage'));
 
+// Unified Templates page (landing pages + email templates)
+const TemplatesPage = lazy(() => import('./pages/TemplatesPage'));
+
 // Automations
 const AutomationsPage = lazy(() => import('./pages/AutomationsPage'));
 const AutomationBuilderPage = lazy(() => import('./pages/AutomationBuilderPage'));
+const AutomationLogsPage = lazy(() => import('./pages/AutomationLogsPage'));
 
 // ============================================================================
 // ERROR BOUNDARY - Graceful error handling for lazy loaded components
@@ -291,12 +294,15 @@ function App() {
                           <Route path="/calendar" element={<NestedSuspense><CalendarPage /></NestedSuspense>} />
                           <Route path="/gmail" element={<NestedSuspense><GmailPage /></NestedSuspense>} />
                           
-                          {/* Pages (Landing Page Builder) */}
-                          <Route path="/pages" element={<NestedSuspense><PagesListPage /></NestedSuspense>} />
+                          {/* Templates — unified landing pages + email templates */}
+                          <Route path="/templates" element={<NestedSuspense><TemplatesPage /></NestedSuspense>} />
+
+                          {/* Landing Page Builder (accessed from /templates?tab=landing) */}
+                          <Route path="/pages" element={<Navigate to="/templates?tab=landing" replace />} />
                           <Route path="/pages/new" element={<NestedSuspense><PageBuilderPage /></NestedSuspense>} />
                           <Route path="/pages/:pageId/edit" element={<NestedSuspense><PageBuilderPage /></NestedSuspense>} />
                           <Route path="/pages/:pageId/responses" element={<NestedSuspense><PageResponsesPage /></NestedSuspense>} />
-                          
+
                           {/* Discuss (Team Chat) */}
                           <Route path="/discuss" element={<NestedSuspense><DiscussPage /></NestedSuspense>} />
 
@@ -304,6 +310,7 @@ function App() {
                           <Route path="/automations" element={<NestedSuspense><AutomationsPage /></NestedSuspense>} />
                           <Route path="/automations/new" element={<NestedSuspense><AutomationBuilderPage /></NestedSuspense>} />
                           <Route path="/automations/:id/edit" element={<NestedSuspense><AutomationBuilderPage /></NestedSuspense>} />
+                          <Route path="/automations/:id/logs" element={<NestedSuspense><AutomationLogsPage /></NestedSuspense>} />
                         </Route>
 
                         {/* ===== ADMIN DASHBOARD ROUTES ===== */}
@@ -334,12 +341,15 @@ function App() {
                           <Route path="calendar" element={<NestedSuspense><CalendarPage /></NestedSuspense>} />
                           <Route path="gmail" element={<NestedSuspense><GmailPage /></NestedSuspense>} />
                           
-                          {/* Pages (Landing Page Builder) - Admin */}
-                          <Route path="pages" element={<NestedSuspense><PagesListPage /></NestedSuspense>} />
+                          {/* Templates — unified landing pages + email templates (Admin) */}
+                          <Route path="templates" element={<NestedSuspense><TemplatesPage /></NestedSuspense>} />
+
+                          {/* Landing Page Builder - Admin (accessed from /admin/templates?tab=landing) */}
+                          <Route path="pages" element={<Navigate to="/admin/templates?tab=landing" replace />} />
                           <Route path="pages/new" element={<NestedSuspense><PageBuilderPage /></NestedSuspense>} />
                           <Route path="pages/:pageId/edit" element={<NestedSuspense><PageBuilderPage /></NestedSuspense>} />
                           <Route path="pages/:pageId/responses" element={<NestedSuspense><PageResponsesPage /></NestedSuspense>} />
-                          
+
                           {/* Discuss (Team Chat) - Admin */}
                           <Route path="discuss" element={<NestedSuspense><DiscussPage /></NestedSuspense>} />
 
@@ -347,6 +357,7 @@ function App() {
                           <Route path="automations" element={<NestedSuspense><AutomationsPage /></NestedSuspense>} />
                           <Route path="automations/new" element={<NestedSuspense><AutomationBuilderPage /></NestedSuspense>} />
                           <Route path="automations/:id/edit" element={<NestedSuspense><AutomationBuilderPage /></NestedSuspense>} />
+                          <Route path="automations/:id/logs" element={<NestedSuspense><AutomationLogsPage /></NestedSuspense>} />
                           
                           {/* Settings */}
                           <Route path="settings" element={<NestedSuspense><SettingsPage /></NestedSuspense>} />
