@@ -3,6 +3,18 @@ import { Room, RoomEvent } from 'livekit-client';
 import * as discussService from '../../services/discussService';
 import { useSocket, useSocketEvent } from '../../context/SocketContext';
 
+// ---- Microphone permission helper ----
+const requestMicPermission = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Stop the tracks immediately — we just needed the permission grant
+    stream.getTracks().forEach((t) => t.stop());
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 // ---- Ringtone generator using Web Audio API ----
 const createRingtone = () => {
   let ctx = null;
@@ -79,6 +91,7 @@ export const AudioCallProvider = ({ children }) => {
   const [participants, setParticipants] = useState([]);
   const [callDuration, setCallDuration] = useState(0);
   const [incomingCall, setIncomingCall] = useState(null);
+  const [callError, setCallError] = useState(null); // user-visible error message
   // Stores the last channel the user manually left (so they can rejoin)
   const [lastLeftChannel, setLastLeftChannel] = useState(null);
 
@@ -91,6 +104,9 @@ export const AudioCallProvider = ({ children }) => {
   const ringingTimerRef = useRef(null);
   const disconnectingRef = useRef(false); // guard against recursive disconnect
   const ringtoneRef = useRef(null);
+  // Keep a ref mirror of callChannelId so callbacks/timers always read the latest value
+  const callChannelIdRef = useRef(null);
+  useEffect(() => { callChannelIdRef.current = callChannelId; }, [callChannelId]);
 
   useEffect(() => {
     return () => {
@@ -133,12 +149,31 @@ export const AudioCallProvider = ({ children }) => {
   const connectToRoom = useCallback(async (channelId) => {
     try {
       setCallState('connecting');
+      setCallError(null);
 
-      const { token, wsUrl } = await discussService.getCallToken(channelId);
+      // 1. Request microphone permission first — fail early with a clear message
+      const micAllowed = await requestMicPermission();
+      if (!micAllowed) {
+        setCallError('Microphone access denied. Please allow microphone permission and try again.');
+        console.warn('[Call] Microphone permission denied');
+        resetLocalState();
+        return false;
+      }
 
+      // 2. Fetch a LiveKit token from the backend
+      let token, wsUrl;
+      try {
+        ({ token, wsUrl } = await discussService.getCallToken(channelId));
+      } catch (fetchErr) {
+        const msg = fetchErr?.response?.data?.message || fetchErr.message || 'Unknown error';
+        setCallError(`Failed to get call token: ${msg}`);
+        console.error('[Call] Token fetch failed:', fetchErr);
+        resetLocalState();
+        return false;
+      }
+
+      // 3. Create the LiveKit room instance (audio-only — no video features)
       const room = new Room({
-        adaptiveStream: true,
-        dynacast: true,
         audioCaptureDefaults: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -146,31 +181,41 @@ export const AudioCallProvider = ({ children }) => {
         },
       });
 
-      room.on(RoomEvent.ParticipantConnected, () => syncParticipants());
-      room.on(RoomEvent.ParticipantDisconnected, () => syncParticipants());
+      room.on(RoomEvent.ParticipantConnected, (p) => {
+        console.debug('[Call] ParticipantConnected:', p.identity);
+        syncParticipants();
+      });
+      room.on(RoomEvent.ParticipantDisconnected, (p) => {
+        console.debug('[Call] ParticipantDisconnected:', p.identity);
+        syncParticipants();
+      });
       room.on(RoomEvent.TrackMuted, () => syncParticipants());
       room.on(RoomEvent.TrackUnmuted, () => syncParticipants());
 
       // Attach remote audio tracks so they actually play through speakers
-      room.on(RoomEvent.TrackSubscribed, (track) => {
+      room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+        console.debug('[Call] TrackSubscribed:', track.kind, track.sid, 'from', participant?.identity);
         if (track.kind === 'audio') {
           const audio = track.attach();
           audio.autoplay = true;
+          audio.volume = 1.0;
           audio.dataset.livekitTrack = track.sid;
+          // Use off-screen positioning instead of display:none — some browsers
+          // throttle or suspend media elements inside display:none containers.
           let container = document.getElementById('livekit-audio-container');
           if (!container) {
             container = document.createElement('div');
             container.id = 'livekit-audio-container';
-            container.style.display = 'none';
+            container.style.cssText = 'position:fixed;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;left:-9999px;top:-9999px';
             document.body.appendChild(container);
           }
           container.appendChild(audio);
-          // Explicitly play to handle browsers that block autoplay
-          audio.play().catch(() => {
-            // If autoplay blocked, retry on next user interaction
+          audio.play().then(() => {
+            console.debug('[Call] Audio playing for track', track.sid);
+          }).catch((err) => {
+            console.warn('[Call] Audio autoplay blocked, will retry on user interaction:', err.message);
             const resumePlay = () => {
               audio.play().catch(() => {});
-              document.removeEventListener('click', resumePlay);
             };
             document.addEventListener('click', resumePlay, { once: true });
           });
@@ -179,10 +224,16 @@ export const AudioCallProvider = ({ children }) => {
       });
 
       // Detach audio elements when remote tracks are unsubscribed
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+        console.debug('[Call] TrackUnsubscribed:', track.kind, track.sid, 'from', participant?.identity);
         if (track.kind === 'audio') {
           track.detach().forEach((el) => el.remove());
         }
+      });
+
+      // Track subscription failures
+      room.on(RoomEvent.TrackSubscriptionFailed, (trackSid, participant, reason) => {
+        console.error('[Call] TrackSubscriptionFailed:', trackSid, participant?.identity, reason);
       });
 
       room.on(RoomEvent.Disconnected, () => {
@@ -192,10 +243,32 @@ export const AudioCallProvider = ({ children }) => {
         }
       });
 
-      await room.connect(wsUrl, token);
-      // Resume audio context — required by browsers with strict autoplay policies
-      await room.startAudio().catch(() => {});
-      await room.localParticipant.setMicrophoneEnabled(true);
+      // 4. Connect to LiveKit Cloud
+      try {
+        await room.connect(wsUrl, token);
+      } catch (connErr) {
+        setCallError('Failed to connect to call server. Check your internet connection.');
+        console.error('[Call] LiveKit connect failed:', connErr);
+        resetLocalState();
+        return false;
+      }
+
+      // 5. Unlock browser audio context (needed for remote audio playback)
+      try {
+        await room.startAudio();
+        console.debug('[Call] room.startAudio() succeeded');
+      } catch (audioErr) {
+        console.warn('[Call] room.startAudio() failed — remote audio may not play until user interacts:', audioErr);
+      }
+
+      // 6. Enable local microphone so others can hear us
+      try {
+        await room.localParticipant.setMicrophoneEnabled(true);
+        console.debug('[Call] Microphone enabled, publishing:', room.localParticipant.audioTrackPublications.size, 'audio track(s)');
+      } catch (micErr) {
+        console.warn('[Call] Could not enable microphone after connect:', micErr);
+        // Continue anyway — user can unmute later
+      }
 
       roomRef.current = room;
       disconnectingRef.current = false;
@@ -211,11 +284,12 @@ export const AudioCallProvider = ({ children }) => {
 
       return true;
     } catch (err) {
-      console.error('Failed to connect to call:', err);
+      console.error('[Call] Unexpected error in connectToRoom:', err);
+      setCallError('Call failed unexpectedly. Please try again.');
       resetLocalState();
       return false;
     }
-  }, [syncParticipants]);
+  }, [syncParticipants, resetLocalState]);
 
   /**
    * Reset only local UI state — does NOT disconnect the room or emit socket events.
@@ -251,8 +325,9 @@ export const AudioCallProvider = ({ children }) => {
   const startCall = useCallback(async (channelId, channelName, callerName) => {
     if (callState !== 'idle') return false;
 
-    // Clear any pending rejoin prompt
+    // Clear any pending rejoin prompt and previous errors
     setLastLeftChannel(null);
+    setCallError(null);
 
     setCallState('ringing-out');
     setCallChannelId(channelId);
@@ -273,6 +348,8 @@ export const AudioCallProvider = ({ children }) => {
 
     const success = await connectToRoom(channelId);
     if (!success) {
+      // Connection failed — notify others so they don't see a phantom call
+      emit('call:end', { channelId });
       setActiveCallChannels((prev) => {
         const next = { ...prev };
         delete next[channelId];
@@ -284,9 +361,21 @@ export const AudioCallProvider = ({ children }) => {
 
     // Auto-end after 60s if nobody joins — mark as missed in DB
     ringingTimerRef.current = setTimeout(() => {
-      if (roomRef.current && roomRef.current.remoteParticipants.size === 0) {
-        emit('call:missed', { channelId });
-        endCall();
+      const cid = callChannelIdRef.current;
+      if (roomRef.current && roomRef.current.remoteParticipants.size === 0 && cid) {
+        emit('call:missed', { channelId: cid });
+        // Inline end-call logic — we're the last (only) participant
+        disconnectingRef.current = true;
+        roomRef.current.disconnect();
+        roomRef.current = null;
+        emit('call:end', { channelId: cid });
+        setActiveCallChannels((prev) => {
+          const next = { ...prev };
+          delete next[cid];
+          return next;
+        });
+        resetLocalState();
+        disconnectingRef.current = false;
       }
     }, 60000);
 
@@ -508,6 +597,8 @@ export const AudioCallProvider = ({ children }) => {
   useSocketEvent('call:start', handleIncomingCall);
   useSocketEvent('call:end', handleCallEnded);
 
+  const clearCallError = useCallback(() => setCallError(null), []);
+
   const value = {
     // State
     callState,
@@ -519,6 +610,7 @@ export const AudioCallProvider = ({ children }) => {
     callDuration,
     incomingCall,
     activeCallChannels,
+    callError,
 
     // Actions
     startCall,
@@ -528,6 +620,7 @@ export const AudioCallProvider = ({ children }) => {
     leaveCall,
     endCall,
     dismissRejoin,
+    clearCallError,
     toggleMute,
     toggleSpeaker,
     // Rejoin state
