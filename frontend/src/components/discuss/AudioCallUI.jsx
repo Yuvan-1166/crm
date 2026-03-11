@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, useRef, useCallback } from 'react';
+import { memo, useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import { Phone, PhoneOff, PhoneIncoming, Mic, MicOff, Volume2, VolumeX, User, Users, GripHorizontal, LogOut } from 'lucide-react';
 import { useAudioCall } from './AudioCallProvider';
 
@@ -502,12 +502,44 @@ export const CallSystemMessage = memo(({ message, channelId, channelName }) => {
 CallSystemMessage.displayName = 'CallSystemMessage';
 
 /* =====================================================
+   CALL ERROR TOAST — auto-dismissing error banner
+===================================================== */
+const CallErrorToast = memo(() => {
+  const { callError, clearCallError } = useAudioCall();
+
+  useEffect(() => {
+    if (!callError) return;
+    const t = setTimeout(clearCallError, 8000);
+    return () => clearTimeout(t);
+  }, [callError, clearCallError]);
+
+  if (!callError) return null;
+
+  return (
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] max-w-sm w-full animate-slide-in">
+      <div className="bg-red-600 text-white rounded-xl shadow-2xl px-4 py-3 flex items-start gap-3">
+        <PhoneOff className="w-5 h-5 flex-shrink-0 mt-0.5" />
+        <div className="flex-1 text-sm">{callError}</div>
+        <button
+          onClick={clearCallError}
+          className="text-white/70 hover:text-white text-lg leading-none flex-shrink-0"
+        >
+          &times;
+        </button>
+      </div>
+    </div>
+  );
+});
+CallErrorToast.displayName = 'CallErrorToast';
+
+/* =====================================================
    CALL OVERLAY — Renders the floating call popups.
    Mount once at page level (outside chat area).
 ===================================================== */
 export const CallOverlay = memo(() => {
   return (
     <>
+      <CallErrorToast />
       <IncomingCallPopup />
       <OutgoingCallPopup />
       <ActiveCallWidget />
