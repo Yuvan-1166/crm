@@ -28,6 +28,7 @@ const DashboardLayout = memo(() => {
     if (path === '/analytics') return { view: 'analytics', stage: null };
     if (path === '/calendar') return { view: 'calendar', stage: null };
     if (path === '/gmail') return { view: 'gmail', stage: null };
+    if (path === '/assistant') return { view: 'assistant', stage: null };
     
     // Check sessions routes (/sessions/:stage)
     const sessionsMatch = path.match(/^\/sessions\/([\w]+)$/);

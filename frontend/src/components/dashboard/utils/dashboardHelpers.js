@@ -26,6 +26,8 @@ export const getPageTitle = (activeView, activeStage) => {
       return 'Calendar';
     case 'gmail':
       return 'Gmail';
+    case 'assistant':
+      return 'AI Assistant';
     case 'team':
       return 'Team Management';
     case 'settings':
@@ -53,4 +55,5 @@ export const VIEW_TYPES = {
   ANALYTICS: 'analytics',
   CALENDAR: 'calendar',
   GMAIL: 'gmail',
+  ASSISTANT: 'assistant',
 };

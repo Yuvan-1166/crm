@@ -32,6 +32,7 @@ const AdminLayout = memo(() => {
     if (path === '/admin/analytics') return { view: 'analytics', stage: null };
     if (path === '/admin/calendar') return { view: 'calendar', stage: null };
     if (path === '/admin/gmail') return { view: 'gmail', stage: null };
+    if (path === '/admin/assistant') return { view: 'assistant', stage: null };
     
     // Check admin sessions routes (/admin/sessions/:stage)
     const sessionsMatch = path.match(/^\/admin\/sessions\/([\w]+)$/);

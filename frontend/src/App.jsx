@@ -61,6 +61,7 @@ const ABTestsPage = lazy(() => import('./pages/ABTestsPage'));
 const AutomationsPage = lazy(() => import('./pages/AutomationsPage'));
 const AutomationBuilderPage = lazy(() => import('./pages/AutomationBuilderPage'));
 const AutomationLogsPage = lazy(() => import('./pages/AutomationLogsPage'));
+const AIAssistantPage = lazy(() => import('./pages/AIAssistantPage'));
 
 // ============================================================================
 // ERROR BOUNDARY - Graceful error handling for lazy loaded components
@@ -352,6 +353,9 @@ function App() {
                           {/* Discuss (Team Chat) */}
                           <Route path="/discuss" element={<NestedSuspense><DiscussPage /></NestedSuspense>} />
 
+                          {/* AI Assistant */}
+                          <Route path="/assistant" element={<NestedSuspense><AIAssistantPage /></NestedSuspense>} />
+
                           {/* Automations */}
                           <Route path="/automations" element={<NestedSuspense><AutomationsPage /></NestedSuspense>} />
                           <Route path="/automations/new" element={<NestedSuspense><AutomationBuilderPage /></NestedSuspense>} />
@@ -404,6 +408,9 @@ function App() {
 
                           {/* Discuss (Team Chat) - Admin */}
                           <Route path="discuss" element={<NestedSuspense><DiscussPage /></NestedSuspense>} />
+
+                          {/* AI Assistant - Admin */}
+                          <Route path="assistant" element={<NestedSuspense><AIAssistantPage /></NestedSuspense>} />
 
                           {/* Automations - Admin */}
                           <Route path="automations" element={<NestedSuspense><AutomationsPage /></NestedSuspense>} />
