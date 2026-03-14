@@ -38,6 +38,10 @@ const PREFETCH_MAP = {
     () => import('../pages/ContactsPage'),
     () => import('../pages/FollowupsPage'),
   ],
+  '/chat': [
+    () => import('../pages/ContactsPage'),
+    () => import('../pages/AnalyticsPage'),
+  ],
   '/templates': [
     () => import('../pages/PageBuilderPage'),
     () => import('../pages/PageResponsesPage'),
@@ -111,6 +115,7 @@ export const prefetchRoute = (routeName) => {
     'analytics': () => import('../pages/AnalyticsPage'),
     'calendar': () => import('../pages/CalendarPage'),
     'gmail': () => import('../pages/GmailPage'),
+    'assistant': () => import('../pages/AIAssistantPage'),
     'followups': () => import('../pages/FollowupsPage'),
     'sessions': () => import('../pages/StageFollowupsPage'),
     'settings': () => import('../pages/SettingsPage'),

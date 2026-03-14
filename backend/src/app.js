@@ -47,6 +47,7 @@ import automationRoutes from "./modules/automations/automation.routes.js";
 import emailTemplateRoutes from "./modules/email-templates/emailTemplate.routes.js";
 import sequenceRoutes from "./modules/sequences/sequence.routes.js";
 import abTestRoutes from "./modules/ab-tests/abTest.routes.js";
+import supportChatRoutes from "./modules/support-chat/supportChat.routes.js";
 
 // Initialize Express app
 const app = express();
@@ -289,6 +290,9 @@ app.use("/api/ab-tests", abTestRoutes);
 
 // A/B test tracking routes (public — no auth)
 app.use("/api/ab-track", abTestRoutes);
+
+// AI assistant routes (Support Chat proxy)
+app.use("/api/assistant", supportChatRoutes);
 
 /* =====================================================
    404 HANDLER
