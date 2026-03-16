@@ -119,7 +119,7 @@ const ContactGrid = ({
   ];
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col">
       {/* Header Section */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
         {/* Top Row - Title and Add Button */}

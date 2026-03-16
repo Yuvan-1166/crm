@@ -188,7 +188,7 @@ const ContactTable = ({ contacts = [], onContactSelect, onEmailClick, onFollowup
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
