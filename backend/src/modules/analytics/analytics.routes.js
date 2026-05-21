@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as analyticsController from "./analytics.controller.js";
 import * as insightsController from "./insights.controller.js";
+import * as advancedAnalyticsController from "./advancedAnalytics.controller.js";
 import { authenticateEmployee } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../../middlewares/role.middleware.js";
 import { USER_ROLES } from "../../utils/constants.js";
@@ -305,6 +306,65 @@ router.get(
   "/insights/trends",
   authenticateEmployee,
   insightsController.getTrends
+);
+
+/* ===================================================
+   ADVANCED ANALYTICS (BI DASHBOARD)
+=================================================== */
+
+/**
+ * @route   GET /analytics/sales-pipeline
+ * @desc    Get sales pipeline analytics (funnel, velocity, conversions)
+ * @access  Employee
+ */
+router.get(
+  "/sales-pipeline",
+  authenticateEmployee,
+  advancedAnalyticsController.getSalesPipeline
+);
+
+/**
+ * @route   GET /analytics/team-performance
+ * @desc    Get team performance analytics (calls, emails, deals by rep)
+ * @access  Employee
+ */
+router.get(
+  "/team-performance",
+  authenticateEmployee,
+  advancedAnalyticsController.getTeamPerformance
+);
+
+/**
+ * @route   GET /analytics/contact-lifecycle
+ * @desc    Get contact lifecycle analytics (status flow, time in stage)
+ * @access  Employee
+ */
+router.get(
+  "/contact-lifecycle",
+  authenticateEmployee,
+  advancedAnalyticsController.getContactLifecycle
+);
+
+/**
+ * @route   GET /analytics/email-campaigns
+ * @desc    Get email campaign analytics (open/click rates, templates)
+ * @access  Employee
+ */
+router.get(
+  "/email-campaigns",
+  authenticateEmployee,
+  advancedAnalyticsController.getEmailCampaigns
+);
+
+/**
+ * @route   GET /analytics/automation-roi
+ * @desc    Get automation ROI analytics (sequences vs manual, conversion lift)
+ * @access  Employee
+ */
+router.get(
+  "/automation-roi",
+  authenticateEmployee,
+  advancedAnalyticsController.getAutomationROI
 );
 
 export default router;

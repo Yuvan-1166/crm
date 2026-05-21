@@ -63,6 +63,9 @@ const AutomationBuilderPage = lazy(() => import('./pages/AutomationBuilderPage')
 const AutomationLogsPage = lazy(() => import('./pages/AutomationLogsPage'));
 const AIAssistantPage = lazy(() => import('./pages/AIAssistantPage'));
 
+// Advanced Analytics
+const AdvancedAnalyticsPage = lazy(() => import('./pages/AdvancedAnalyticsPage'));
+
 // ============================================================================
 // ERROR BOUNDARY - Graceful error handling for lazy loaded components
 // ============================================================================
@@ -367,6 +370,9 @@ function App() {
 
                           {/* A/B Tests */}
                           <Route path="/ab-tests" element={<NestedSuspense><ABTestsPage /></NestedSuspense>} />
+
+                          {/* Advanced Analytics */}
+                          <Route path="/advanced-analytics" element={<NestedSuspense><AdvancedAnalyticsPage /></NestedSuspense>} />
                         </Route>
 
                         {/* ===== ADMIN DASHBOARD ROUTES ===== */}
@@ -423,6 +429,9 @@ function App() {
 
                           {/* A/B Tests - Admin */}
                           <Route path="ab-tests" element={<NestedSuspense><ABTestsPage /></NestedSuspense>} />
+
+                          {/* Advanced Analytics - Admin */}
+                          <Route path="advanced-analytics" element={<NestedSuspense><AdvancedAnalyticsPage /></NestedSuspense>} />
                           
                           {/* Settings */}
                           <Route path="settings" element={<NestedSuspense><SettingsPage /></NestedSuspense>} />
