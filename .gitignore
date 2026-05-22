@@ -3,6 +3,7 @@ node_modules
 .kiro/
 .vscode/
 *.md
+*.txt
 .backup
 dist/
 *.json
@@ -10,3 +11,4 @@ backend/db/migrations/*.js
 *.yaml
 uploads/
 *.lock
+.codex
